@@ -64,11 +64,23 @@ button { font-family: inherit; }
   .sidebar      { display: none !important; }
   .topbar       { display: none !important; }
   .mobile-header{ display: flex; }
-  .page-content { padding: 18px 14px; }
+  .page-content { padding: 16px 12px; }
 
-  .metrics-row  { grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 16px; }
-  .metric-card  { padding: 16px 16px; }
-  .metric-value { font-size: 24px; }
+  /* Metrics: 2-col grid, compact cards, no absolute icon */
+  .metrics-row  { grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 14px; }
+  .metric-card  { padding: 14px 14px; }
+  .metric-icon  { position: static; width: 26px; height: 26px; border-radius: 7px; margin-bottom: 10px; }
+  .metric-label { font-size: 11px; margin-bottom: 4px; }
+  .metric-value { font-size: 22px; }
+  .metric-sub   { font-size: 11px; margin-top: 3px; }
+
+  /* Dashboard overview: hide table, show list */
+  .dash-table-wrap  { display: none; }
+  .dash-mobile-list { display: block; }
+
+  /* Card padding tighter */
+  .card-header { padding: 14px 14px 0; }
+  .card-body   { padding: 14px 14px; }
 
   .analytics-grid { grid-template-columns: 1fr; }
 
@@ -76,7 +88,7 @@ button { font-family: inherit; }
 
   .table th, .table td { padding: 10px 10px; }
 
-  /* Detail page: stack sidenav on mobile */
+  /* Detail page: hide sidenav, full width content */
   .detail-sidenav { display: none; }
 }
 
@@ -174,6 +186,10 @@ button { font-family: inherit; }
   border: 1px solid var(--border); box-shadow: var(--shadow);
   padding: 22px 24px; position: relative; overflow: hidden;
 }
+
+/* ── DASHBOARD MOBILE/DESKTOP TOGGLES ───────────────────────────────────── */
+.dash-table-wrap  { display: block; overflow-x: auto; }
+.dash-mobile-list { display: none; }
 .metric-label { font-size: 12px; font-weight: 500; color: var(--text-muted); margin-bottom: 10px; letter-spacing: 0.01em; }
 .metric-value { font-size: 30px; font-weight: 700; letter-spacing: -1px; line-height: 1; font-variant-numeric: tabular-nums; color: var(--text); }
 .metric-sub   { font-size: 12px; color: var(--text-muted); margin-top: 6px; }

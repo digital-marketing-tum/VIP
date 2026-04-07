@@ -106,44 +106,75 @@ export default function Dashboard({ onOpenDetail }) {
               sub="Create your first virtual influencer to see metrics here."
             />
           ) : (
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Influencer</th>
-                  <th>Niche</th>
-                  <th>Platforms</th>
-                  <th>Pipelines</th>
-                  <th>Posts</th>
-                  <th>Status</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {influencers.map(inf => (
-                  <tr key={inf.id}>
-                    <td>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <div className="avatar" style={{ background: inf.color }}>
-                          {inf.refImages?.[0]
-                            ? <img src={inf.refImages[0]} style={{ width:'100%', height:'100%', objectFit:'cover', borderRadius:'50%' }} alt="" />
-                            : inf.name.charAt(0).toUpperCase()
-                          }
-                        </div>
-                        <span style={{ fontWeight: 600, fontSize: 13 }}>{inf.name}</span>
+            <>
+              {/* Desktop table */}
+              <div className="dash-table-wrap">
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>Influencer</th>
+                      <th>Niche</th>
+                      <th>Platforms</th>
+                      <th>Pipelines</th>
+                      <th>Posts</th>
+                      <th>Status</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {influencers.map(inf => (
+                      <tr key={inf.id}>
+                        <td>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                            <div className="avatar" style={{ background: inf.color }}>
+                              {inf.refImages?.[0]
+                                ? <img src={inf.refImages[0]} style={{ width:'100%', height:'100%', objectFit:'cover', borderRadius:'50%' }} alt="" />
+                                : inf.name.charAt(0).toUpperCase()
+                              }
+                            </div>
+                            <span style={{ fontWeight: 600, fontSize: 13 }}>{inf.name}</span>
+                          </div>
+                        </td>
+                        <td style={{ color: 'var(--text-muted)', fontSize: 12 }}>{inf.niche || '—'}</td>
+                        <td><PlatIcons platforms={inf.platforms} /></td>
+                        <td style={{ fontSize: 13 }}>{(workflowCounts[inf.id] || 0) + (carouselPipCounts[inf.id] || 0)}</td>
+                        <td style={{ fontWeight: 700 }}>{(inf.postsGenerated || 0) + (executionCounts[inf.id] || 0)}</td>
+                        <td><span className={`badge ${inf.status}`}>{inf.status}</span></td>
+                        <td>
+                          <button className="btn btn-sm btn-secondary" onClick={() => onOpenDetail(inf.id)}>Open</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Mobile list */}
+              <div className="dash-mobile-list">
+                {influencers.map(inf => {
+                  const pips  = (workflowCounts[inf.id] || 0) + (carouselPipCounts[inf.id] || 0)
+                  const posts = (inf.postsGenerated || 0) + (executionCounts[inf.id] || 0)
+                  return (
+                    <div key={inf.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 0', borderBottom: '1px solid var(--border)' }}>
+                      <div className="avatar" style={{ background: inf.color, flexShrink: 0 }}>
+                        {inf.refImages?.[0]
+                          ? <img src={inf.refImages[0]} style={{ width:'100%', height:'100%', objectFit:'cover', borderRadius:'50%' }} alt="" />
+                          : inf.name.charAt(0).toUpperCase()
+                        }
                       </div>
-                    </td>
-                    <td style={{ color: 'var(--text-muted)', fontSize: 12 }}>{inf.niche || '—'}</td>
-                    <td><PlatIcons platforms={inf.platforms} /></td>
-                    <td style={{ fontSize: 13 }}>{(workflowCounts[inf.id] || 0) + (carouselPipCounts[inf.id] || 0)}</td>
-                    <td style={{ fontWeight: 700 }}>{(inf.postsGenerated || 0) + (executionCounts[inf.id] || 0)}</td>
-                    <td><span className={`badge ${inf.status}`}>{inf.status}</span></td>
-                    <td>
-                      <button className="btn btn-sm btn-secondary" onClick={() => onOpenDetail(inf.id)}>Open</button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 600, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{inf.name}</div>
+                        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+                          {pips} pip{pips !== 1 ? 's' : ''} · {posts} post{posts !== 1 ? 's' : ''}
+                        </div>
+                      </div>
+                      <span className={`badge ${inf.status}`} style={{ flexShrink: 0, fontSize: 10 }}>{inf.status}</span>
+                      <button className="btn btn-sm btn-secondary" style={{ flexShrink: 0 }} onClick={() => onOpenDetail(inf.id)}>Open</button>
+                    </div>
+                  )
+                })}
+              </div>
+            </>
           )}
         </div>
       </div>
