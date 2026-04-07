@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { Store } from '../store'
 import { supabase } from '../supabase'
 import { uploadImage } from '../storage'
-import { ideateCarousel, generateSlidePrompts, generateTopicList, generateSlideImage, buildIdeationPrompt, buildSlidePromptsPrompt, buildTopicListPrompt } from '../services/generator'
+import { ideateCarousel, generateSlidePrompts, generateTopicList, generateSlideImage, generateCaption, buildIdeationPrompt, buildSlidePromptsPrompt, buildTopicListPrompt, buildCaptionPrompt } from '../services/generator'
 
 // ── Supabase mappers ──────────────────────────────────────────────────────────
 function fromDbPip(row) {
@@ -17,6 +17,7 @@ function fromDbPip(row) {
     topicList:     row.topic_list || [],
     p1Prompt:      row.p1_prompt,
     p2Prompt:      row.p2_prompt,
+    hashtagCount:  row.hashtag_count || 20,
     createdAt:     row.created_at,
     updatedAt:     row.updated_at,
   }
@@ -33,6 +34,7 @@ function toDbPip(pip) {
     topic_list:     pip.topicList || [],
     p1_prompt:      pip.p1Prompt ?? null,
     p2_prompt:      pip.p2Prompt ?? null,
+    hashtag_count:  pip.hashtagCount || 20,
     updated_at:     new Date().toISOString(),
   }
 }
@@ -798,6 +800,12 @@ function EditorView({ pip, inf, geminiKey, onUpdate, onBack }) {
   const [p3Status, setP3Status]       = useState('idle')
   const [p3Error, setP3Error]         = useState('')
 
+  // Phase 4 — caption + hashtags, always fresh
+  const [p4Status, setP4Status]       = useState('idle')
+  const [p4Error, setP4Error]         = useState('')
+  const [captionResult, setCaptionResult] = useState(null)
+  const [hashtagCount, setHashtagCount]   = useState(pip.hashtagCount || 20)
+
   // Pipeline name
   const [name, setName]               = useState(pip.name)
   const [workflowRunning, setWorkflowRunning] = useState(false)
@@ -917,7 +925,7 @@ function EditorView({ pip, inf, geminiKey, onUpdate, onBack }) {
     return final
   }
 
-  async function saveExecution(images) {
+  async function saveExecution(images, capData = null) {
     const doneImages = images.filter(img => img.status === 'done' && img.src)
     if (!doneImages.length) return
     const { data: { user } } = await supabase.auth.getUser()
@@ -925,7 +933,7 @@ function EditorView({ pip, inf, geminiKey, onUpdate, onBack }) {
       .from('carousel_executions')
       .select('*', { count: 'exact', head: true })
       .eq('influencer_id', inf.id)
-    await supabase.from('carousel_executions').insert({
+    const { data: inserted } = await supabase.from('carousel_executions').insert({
       id:             genId(),
       pipeline_id:    pip.id,
       influencer_id:  inf.id,
@@ -933,7 +941,21 @@ function EditorView({ pip, inf, geminiKey, onUpdate, onBack }) {
       title:          `Post #${(count || 0) + 1}`,
       topic:          idea?.topic || '',
       images:         doneImages.map(img => ({ position: img.position, src: img.src })),
-    })
+      caption:        capData?.caption  || null,
+      hashtags:       capData?.hashtags || null,
+    }).select('id').single()
+    return inserted?.id
+  }
+
+  // ── Phase 4 executor ──────────────────────────────────────────────────────
+  async function executePhase4() {
+    if (!idea) throw new Error('Generate an idea first (Phase 1).')
+    if (!geminiKey) throw new Error('No Gemini API key — go to Settings.')
+    setP4Status('loading'); setP4Error('')
+    const result = await generateCaption(geminiKey, inf, idea, hashtagCount)
+    setCaptionResult(result)
+    setP4Status('done')
+    return result
   }
 
   async function regenerateSingleImage(slide) {
@@ -986,8 +1008,27 @@ function EditorView({ pip, inf, geminiKey, onUpdate, onBack }) {
     cancelRef.current = false
     try {
       const images = await executePhase3()
-      if (!cancelRef.current) await saveExecution(images)
+      if (!cancelRef.current) await saveExecution(images, captionResult)
     } catch (err) { setP3Error(err.message); setP3Status('error') }
+  }
+
+  async function runPhase4() {
+    try {
+      const result = await executePhase4()
+      // Update latest execution for this pipeline if one exists
+      const { data: latestExec } = await supabase
+        .from('carousel_executions')
+        .select('id')
+        .eq('pipeline_id', pip.id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single()
+      if (latestExec) {
+        await supabase.from('carousel_executions')
+          .update({ caption: result.caption, hashtags: result.hashtags })
+          .eq('id', latestExec.id)
+      }
+    } catch (err) { setP4Error(err.message); setP4Status('error') }
   }
 
   // ── Run full workflow ──────────────────────────────────────────────────────
@@ -1001,7 +1042,10 @@ function EditorView({ pip, inf, geminiKey, onUpdate, onBack }) {
       const promptsRes  = await executePhase2(ideaResult)
       if (cancelRef.current) return
       const finalImages = await executePhase3(promptsRes.slides)
-      if (!cancelRef.current) await saveExecution(finalImages)
+      if (cancelRef.current) return
+      let capData = null
+      try { capData = await executePhase4() } catch {}  // phase 4 failure doesn't block save
+      if (!cancelRef.current) await saveExecution(finalImages, capData)
     } catch (err) {
       // errors already set inside executors
     } finally {
@@ -1021,7 +1065,7 @@ function EditorView({ pip, inf, geminiKey, onUpdate, onBack }) {
   }, [])
 
   const p1Done = p1Status === 'done'
-  const busy   = workflowRunning || p1Status === 'loading' || p2Status === 'loading' || p3Status === 'loading'
+  const busy   = workflowRunning || p1Status === 'loading' || p2Status === 'loading' || p3Status === 'loading' || p4Status === 'loading'
 
   return (
     <div style={{ maxWidth: 700, margin: '0 auto' }}>
@@ -1292,9 +1336,10 @@ function EditorView({ pip, inf, geminiKey, onUpdate, onBack }) {
 
         {/* Phase 3 row */}
         <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
-          {/* Timeline column (no line below last step) */}
+          {/* Timeline column — with line to phase 4 */}
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: 26, flexShrink: 0, paddingTop: 18 }}>
             <StepCircle n={3} done={p3Status === 'done'} active={p3Status === 'loading' || p3Status === 'idle'} />
+            <div style={{ width: 1.5, background: 'var(--border)', flex: 1, minHeight: 28, marginTop: 8 }} />
           </div>
           {/* Card */}
           <div style={{ flex: 1 }}>
@@ -1354,6 +1399,103 @@ function EditorView({ pip, inf, geminiKey, onUpdate, onBack }) {
           </div>
         </div>
 
+        {/* Phase 4 — Caption & Hashtags */}
+        <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: 26, flexShrink: 0, paddingTop: 18 }}>
+            <StepCircle n={4} done={p4Status === 'done'} active={p4Status === 'loading' || p4Status === 'idle'} />
+          </div>
+          <div style={{ flex: 1, paddingBottom: 16 }}>
+            <PhaseCard
+              title="Caption & Hashtags"
+              sub="Generate Instagram caption and hashtags aligned with the persona"
+              status={p4Status}
+            >
+              {/* Settings */}
+              <div style={{ marginBottom: 14 }}>
+                <label className="form-label" style={{ marginBottom: 6, display: 'block' }}>Hashtag count</label>
+                <div className="toggle-row" style={{ maxWidth: 300 }}>
+                  {[10, 20, 30].map(n => (
+                    <button
+                      key={n}
+                      className={`toggle-btn ${hashtagCount === n ? 'active' : ''}`}
+                      onClick={() => { setHashtagCount(n); save({ hashtagCount: n }) }}
+                    >
+                      {n} hashtags
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Generated output */}
+              {captionResult && (
+                <div style={{ marginBottom: 14 }}>
+                  {/* Caption */}
+                  <div style={{ marginBottom: 12 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                      <label className="form-label" style={{ margin: 0 }}>Caption</label>
+                      <button
+                        className="btn btn-ghost btn-sm"
+                        style={{ fontSize: 11, gap: 5, padding: '3px 8px' }}
+                        onClick={() => navigator.clipboard.writeText(captionResult.caption)}
+                      >
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                          <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                        </svg>
+                        Copy
+                      </button>
+                    </div>
+                    <textarea
+                      className="form-textarea"
+                      value={captionResult.caption}
+                      onChange={e => setCaptionResult(prev => ({ ...prev, caption: e.target.value }))}
+                      style={{ minHeight: 110, fontSize: 13, lineHeight: 1.6 }}
+                    />
+                  </div>
+                  {/* Hashtags */}
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                      <label className="form-label" style={{ margin: 0 }}>Hashtags</label>
+                      <button
+                        className="btn btn-ghost btn-sm"
+                        style={{ fontSize: 11, gap: 5, padding: '3px 8px' }}
+                        onClick={() => navigator.clipboard.writeText((captionResult.hashtags || []).join(' '))}
+                      >
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                          <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                        </svg>
+                        Copy all
+                      </button>
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                      {(captionResult.hashtags || []).map((tag, i) => (
+                        <span key={i} style={{
+                          background: 'var(--accent-bg)', color: 'var(--accent)',
+                          padding: '3px 10px', borderRadius: 20, fontSize: 12, fontWeight: 500,
+                        }}>
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {p4Error && <div style={{ color: 'var(--red)', fontSize: 12, marginBottom: 10 }}>{p4Error}</div>}
+
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  className="btn btn-primary"
+                  onClick={runPhase4}
+                  disabled={busy || !idea}
+                  title={!idea ? 'Generate an idea first (Phase 1)' : undefined}
+                >
+                  {p4Status === 'loading' ? <><SpinnerIcon /> Generating</> : captionResult ? 'Regenerate' : 'Generate Caption'}
+                </button>
+              </div>
+            </PhaseCard>
+          </div>
+        </div>
+
       </div>
     </div>
   )
@@ -1368,7 +1510,7 @@ function ExecutionsView({ influencerId, onBack }) {
   useEffect(() => {
     supabase
       .from('carousel_executions')
-      .select('*')
+      .select('id, title, topic, images, posted, caption, hashtags, created_at')
       .eq('influencer_id', influencerId)
       .order('created_at', { ascending: false })
       .then(({ data }) => { setExecutions(data || []); setLoading(false) })
@@ -1451,6 +1593,40 @@ function ExecutionsView({ influencerId, onBack }) {
             </div>
           ))}
         </div>
+
+        {/* Caption */}
+        {selected.caption && (
+          <div style={{ marginTop: 20 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+              <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Caption</span>
+              <button className="btn btn-ghost btn-sm" style={{ fontSize: 11, gap: 5, padding: '3px 8px' }} onClick={() => navigator.clipboard.writeText(selected.caption)}>
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                Copy
+              </button>
+            </div>
+            <div style={{ background: 'var(--surface2)', borderRadius: 10, padding: '12px 14px', fontSize: 13, color: 'var(--text)', whiteSpace: 'pre-wrap', lineHeight: 1.6, border: '1px solid var(--border)' }}>
+              {selected.caption}
+            </div>
+          </div>
+        )}
+
+        {/* Hashtags */}
+        {selected.hashtags?.length > 0 && (
+          <div style={{ marginTop: 14 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+              <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Hashtags</span>
+              <button className="btn btn-ghost btn-sm" style={{ fontSize: 11, gap: 5, padding: '3px 8px' }} onClick={() => navigator.clipboard.writeText(selected.hashtags.join(' '))}>
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                Copy all
+              </button>
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {selected.hashtags.map((tag, i) => (
+                <span key={i} style={{ background: 'var(--accent-bg)', color: 'var(--accent)', padding: '3px 10px', borderRadius: 20, fontSize: 12, fontWeight: 500 }}>{tag}</span>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     )
   }

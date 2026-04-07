@@ -255,7 +255,7 @@ export default function InfluencerDetail({ id, onBack, onOpenPipeline, onNewPipe
     })
     supabase.from('workflows').select('id, name, nodes, updated_at')
       .eq('influencer_id', id).order('created_at').then(({ data }) => setWorkflows(data || []))
-    supabase.from('carousel_executions').select('id, title, topic, images, created_at, posted')
+    supabase.from('carousel_executions').select('id, title, topic, images, created_at, posted, caption, hashtags')
       .eq('influencer_id', id).order('created_at', { ascending: false })
       .then(({ data }) => setExecutions(data || []))
   }, [id])
@@ -581,6 +581,34 @@ export default function InfluencerDetail({ id, onBack, onOpenPipeline, onNewPipe
                     </div>
                   ))}
                 </div>
+                {selectedPost.caption && (
+                  <div style={{ marginTop: 20 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                      <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Caption</span>
+                      <button className="btn btn-ghost btn-sm" style={{ fontSize: 11, gap: 5, padding: '3px 8px' }} onClick={() => navigator.clipboard.writeText(selectedPost.caption)}>
+                        Copy
+                      </button>
+                    </div>
+                    <div style={{ background: 'var(--surface2)', borderRadius: 10, padding: '12px 14px', fontSize: 13, color: 'var(--text)', whiteSpace: 'pre-wrap', lineHeight: 1.6, border: '1px solid var(--border)' }}>
+                      {selectedPost.caption}
+                    </div>
+                  </div>
+                )}
+                {selectedPost.hashtags?.length > 0 && (
+                  <div style={{ marginTop: 14 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                      <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Hashtags</span>
+                      <button className="btn btn-ghost btn-sm" style={{ fontSize: 11, gap: 5, padding: '3px 8px' }} onClick={() => navigator.clipboard.writeText(selectedPost.hashtags.join(' '))}>
+                        Copy all
+                      </button>
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                      {selectedPost.hashtags.map((tag, i) => (
+                        <span key={i} style={{ background: 'var(--accent-bg)', color: 'var(--accent)', padding: '3px 10px', borderRadius: 20, fontSize: 12, fontWeight: 500 }}>{tag}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </Section>
             )
           }

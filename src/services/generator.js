@@ -115,6 +115,23 @@ export async function generateTopicList(apiKey, inf, count = 10, customPrompt) {
   return parsed.topics
 }
 
+// ── Phase 4: Caption + Hashtags ───────────────────────────────────────────────
+export function buildCaptionPrompt(inf, idea, hashtagCount = 20) {
+  const persona = buildPersonaContext(inf)
+  return {
+    system: `You are a social media copywriter for this Instagram creator:\n\n${persona}\n\nWrite copy that feels authentic to their voice and resonates with their audience.`,
+    user: `Write an Instagram caption and ${hashtagCount} hashtags for a carousel post about:\n\n"${idea.topic}"\n\nCaption rules:\n- Match the creator's tone of voice exactly\n- Engaging opening line that hooks the reader\n- 2-4 short paragraphs\n- End with a question or call-to-action to drive comments\n- Use line breaks for readability\n\nHashtag rules:\n- Mix of niche-specific, broad, and mid-range hashtags\n- No spaces within a hashtag\n\nReturn ONLY valid JSON (no markdown, no explanation outside the JSON):\n{\n  "caption": "the full caption text",\n  "hashtags": ["#tag1", "#tag2"]\n}`,
+  }
+}
+
+export async function generateCaption(apiKey, inf, idea, hashtagCount = 20, customPrompt) {
+  const defaults = buildCaptionPrompt(inf, idea, hashtagCount)
+  const system   = customPrompt?.system ?? defaults.system
+  const user     = customPrompt?.user   ?? defaults.user
+  const raw = await geminiText(apiKey, { system, user })
+  return extractJSON(raw)
+}
+
 // ── Phase 1: Auto-generate a carousel idea ────────────────────────────────────
 // customPrompt: optional { system, user } override
 export async function ideateCarousel(apiKey, inf, customPrompt) {
