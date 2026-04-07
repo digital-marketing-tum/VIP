@@ -396,22 +396,23 @@ function ApiKeySetup({ onSave }) {
 
 // ── IG Analytics Section ──────────────────────────────────────────────────────
 function IgAnalyticsSection({ influencers }) {
-  const [apiKey, setApiKey]   = useState(() => localStorage.getItem(LS_KEY) || '')
-  const [igData, setIgData]   = useState({})
-  const [editKey, setEditKey] = useState(false)
+  const [apiKey, setApiKey]       = useState(() => localStorage.getItem(LS_KEY) || '')
+  const [igData, setIgData]       = useState({})
+  const [editKey, setEditKey]     = useState(false)
+  const [drafts, setDrafts]       = useState({}) // inf.id -> draft username string
 
-  const igInfluencers = influencers.filter(inf =>
-    inf.accounts?.find(a => a.platform === 'ig' && a.username)
-  )
+  function getConfiguredUsername(inf) {
+    return inf.accounts?.find(a => a.platform === 'ig')?.username || ''
+  }
 
+  // Auto-fetch for influencers that already have a username in accounts
   useEffect(() => {
-    if (!apiKey || !igInfluencers.length) return
-    const pending = {}
-    igInfluencers.forEach(inf => { pending[inf.id] = null })
-    setIgData(pending)
-
-    igInfluencers.forEach(inf => {
-      const username = inf.accounts.find(a => a.platform === 'ig').username
+    if (!apiKey || !influencers.length) return
+    influencers.forEach(inf => {
+      const username = getConfiguredUsername(inf)
+      if (!username) return
+      if (igData[inf.id] !== undefined) return // already loading or loaded
+      setIgData(prev => ({ ...prev, [inf.id]: null }))
       fetchInstagramData(username, apiKey)
         .then(data => {
           setIgData(prev => ({ ...prev, [inf.id]: data }))
@@ -419,9 +420,31 @@ function IgAnalyticsSection({ influencers }) {
             Store.update(inf.id, { postsGenerated: data.profile.media_count })
           }
         })
-        .catch(err  => setIgData(prev => ({ ...prev, [inf.id]: { error: err.message } })))
+        .catch(err => setIgData(prev => ({ ...prev, [inf.id]: { error: err.message } })))
     })
-  }, [apiKey, influencers.map(i => i.id).join(',')])
+  }, [apiKey, influencers.map(i => i.id + getConfiguredUsername(i)).join(',')])
+
+  async function handleManualFetch(inf) {
+    const username = (drafts[inf.id] || '').trim().replace(/^@/, '')
+    if (!username) return
+    // Save username to influencer accounts
+    const accounts = inf.accounts || []
+    const igAcc = accounts.find(a => a.platform === 'ig')
+    const newAccounts = igAcc
+      ? accounts.map(a => a.platform === 'ig' ? { ...a, username } : a)
+      : [...accounts, { platform: 'ig', username }]
+    Store.update(inf.id, { accounts: newAccounts })
+    // Fetch
+    setIgData(prev => ({ ...prev, [inf.id]: null }))
+    fetchInstagramData(username, apiKey)
+      .then(data => {
+        setIgData(prev => ({ ...prev, [inf.id]: data }))
+        if (data?.profile?.media_count != null) {
+          Store.update(inf.id, { postsGenerated: data.profile.media_count })
+        }
+      })
+      .catch(err => setIgData(prev => ({ ...prev, [inf.id]: { error: err.message } })))
+  }
 
   function saveKey(key) {
     localStorage.setItem(LS_KEY, key)
@@ -435,6 +458,9 @@ function IgAnalyticsSection({ influencers }) {
     setIgData({})
   }
 
+  const loadedInfluencers = influencers.filter(inf => igData[inf.id]?.profile)
+  const connectedCount = influencers.filter(inf => getConfiguredUsername(inf)).length
+
   return (
     <div className="card" style={{ gridColumn: '1 / -1' }}>
       <div className="card-header">
@@ -442,7 +468,7 @@ function IgAnalyticsSection({ influencers }) {
         {apiKey && !editKey && (
           <div style={{ display: 'flex', gap: 10, marginLeft: 'auto', alignItems: 'center' }}>
             <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-              {igInfluencers.length} account{igInfluencers.length !== 1 ? 's' : ''} connected
+              {connectedCount} of {influencers.length} connected
             </span>
             <button className="btn btn-secondary btn-sm" style={{ fontSize: 11 }} onClick={() => setEditKey(true)}>
               Change key
@@ -453,24 +479,56 @@ function IgAnalyticsSection({ influencers }) {
       <div className="card-body" style={{ paddingTop: 8 }}>
         {(!apiKey || editKey) && <ApiKeySetup onSave={saveKey} />}
 
-        {apiKey && !editKey && igInfluencers.length === 0 && (
+        {apiKey && !editKey && influencers.length === 0 && (
           <div style={{ color: 'var(--text-muted)', fontSize: 13, padding: '12px 0' }}>
-            No Instagram accounts configured. Open an influencer → Account → enter the Instagram username.
+            No influencers yet. Create one first.
           </div>
         )}
 
-        {apiKey && !editKey && igInfluencers.length > 0 && (
+        {apiKey && !editKey && influencers.length > 0 && (
           <>
-            <IgSummaryRow igInfluencers={igInfluencers} igData={igData} />
-            <IgComparisonChart igInfluencers={igInfluencers} igData={igData} />
+            <IgSummaryRow igInfluencers={loadedInfluencers} igData={igData} />
+            <IgComparisonChart igInfluencers={loadedInfluencers} igData={igData} />
 
-            {igInfluencers.map(inf => {
+            {influencers.map(inf => {
               const d = igData[inf.id]
+              const hasUsername = !!getConfiguredUsername(inf)
+
+              // Not configured yet — show inline username input
+              if (!hasUsername && d === undefined) return (
+                <div key={inf.id} style={{ borderTop: '1px solid var(--border)', padding: '14px 0', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                  <div className="avatar" style={{ background: inf.color, width: 32, height: 32, fontSize: 12, flexShrink: 0, borderRadius: 8 }}>
+                    {inf.refImages?.[0]
+                      ? <img src={inf.refImages[0]} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 8 }} alt="" />
+                      : inf.name[0].toUpperCase()
+                    }
+                  </div>
+                  <span style={{ fontWeight: 600, fontSize: 13, minWidth: 80 }}>{inf.name}</span>
+                  <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>No Instagram username set</span>
+                  <div style={{ display: 'flex', gap: 6, marginLeft: 'auto', alignItems: 'center' }}>
+                    <input
+                      className="form-input"
+                      style={{ width: 180, fontSize: 12, padding: '5px 10px' }}
+                      placeholder="@username"
+                      value={drafts[inf.id] || ''}
+                      onChange={e => setDrafts(prev => ({ ...prev, [inf.id]: e.target.value }))}
+                      onKeyDown={e => e.key === 'Enter' && handleManualFetch(inf)}
+                    />
+                    <button className="btn btn-primary btn-sm" style={{ fontSize: 11 }} onClick={() => handleManualFetch(inf)}>
+                      Load
+                    </button>
+                  </div>
+                </div>
+              )
+
+              // Loading
               if (d === null || d === undefined) return (
                 <div key={inf.id} style={{ padding: '14px 0', color: 'var(--text-muted)', fontSize: 13, borderTop: '1px solid var(--border)' }}>
                   Loading {inf.name}…
                 </div>
               )
+
+              // Error
               if (d.error) return (
                 <div key={inf.id} style={{ padding: '14px 0', display: 'flex', alignItems: 'center', gap: 8, borderTop: '1px solid var(--border)', flexWrap: 'wrap' }}>
                   <div className="avatar" style={{ background: inf.color, width: 28, height: 28, fontSize: 11 }}>
@@ -480,13 +538,14 @@ function IgAnalyticsSection({ influencers }) {
                   <span style={{ fontSize: 12, color: 'var(--red)' }}>
                     {d.error.includes('401') || d.error.includes('403')
                       ? 'Invalid API key — check your RapidAPI key'
-                      : `API error: ${d.error}`}
+                      : `Error: ${d.error}`}
                   </span>
                   <button className="btn btn-secondary btn-sm" style={{ marginLeft: 'auto', fontSize: 11 }} onClick={removeKey}>
                     Reset key
                   </button>
                 </div>
               )
+
               return <IgInfluencerCard key={inf.id} inf={inf} igData={d} />
             })}
           </>

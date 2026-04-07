@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from './supabase'
 import Auth from './pages/Auth'
 import Sidebar from './components/Sidebar'
@@ -9,6 +9,93 @@ import Settings from './pages/Settings'
 import InfluencerDetail from './pages/InfluencerDetail'
 import PipelineBuilder from './pages/PipelineBuilder'
 import CarouselPipeline from './pages/CarouselPipeline'
+
+// ── Mobile nav ────────────────────────────────────────────────────────────────
+function MobileHeader({ page, setPage, count, onSignOut, title, onBack, backLabel }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+
+  useEffect(() => {
+    if (!open) return
+    const handler = e => { if (!ref.current?.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [open])
+
+  const navItems = [
+    { id: 'dashboard',   label: 'Dashboard',   icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg> },
+    { id: 'influencers', label: 'Influencers',  icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="9" cy="7" r="4"/><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/><path d="M21 21v-2a4 4 0 0 0-3-3.85"/></svg> },
+    { id: 'analytics',   label: 'Analytics',   icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg> },
+    { id: 'settings',    label: 'Settings',    icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg> },
+  ]
+
+  function navigate(id) { setPage(id); setOpen(false) }
+
+  return (
+    <header className="mobile-header">
+      {onBack ? (
+        <button className="btn btn-ghost btn-sm" onClick={onBack} style={{ gap: 4, paddingLeft: 2, flexShrink: 0 }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+          {backLabel}
+        </button>
+      ) : (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+          <div style={{ width: 26, height: 26, borderRadius: 7, background: 'linear-gradient(145deg, #1a8fff, #0055c8)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <svg viewBox="0 0 28 28" fill="none" width="17" height="17">
+              <circle cx="14" cy="10" r="4" fill="white"/>
+              <path d="M6 22c0-4.418 3.582-8 8-8s8 3.582 8 8" stroke="white" strokeWidth="2" strokeLinecap="round"/>
+              <path d="M20 7a7.5 7.5 0 0 1 0 6" stroke="white" strokeWidth="1.8" strokeLinecap="round" opacity="0.6"/>
+            </svg>
+          </div>
+          <span style={{ fontSize: 14, fontWeight: 700, letterSpacing: '-0.3px' }}>
+            Influence<span style={{ color: 'var(--accent)', fontWeight: 500 }}>OS</span>
+          </span>
+        </div>
+      )}
+
+      <div style={{ flex: 1, minWidth: 0, textAlign: onBack ? 'left' : 'center', paddingLeft: onBack ? 8 : 0 }}>
+        <div style={{ fontSize: 15, fontWeight: 600, letterSpacing: '-0.3px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title}</div>
+      </div>
+
+      <div ref={ref} style={{ position: 'relative', flexShrink: 0 }}>
+        <button
+          onClick={() => setOpen(o => !o)}
+          style={{ width: 34, height: 34, borderRadius: 8, border: '1px solid var(--border)', background: open ? 'var(--surface2)' : 'var(--surface)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--text)' }}
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
+            <circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/>
+          </svg>
+        </button>
+
+        {open && (
+          <div style={{ position: 'absolute', top: 40, right: 0, zIndex: 200, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, boxShadow: 'var(--shadow-md)', padding: 6, minWidth: 180, animation: 'fadeIn 0.12s ease' }}>
+            {navItems.map(item => (
+              <button
+                key={item.id}
+                onClick={() => navigate(item.id)}
+                style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '9px 12px', borderRadius: 8, border: 'none', background: (page === item.id || (page === 'detail' && item.id === 'influencers')) ? 'var(--nav-active)' : 'transparent', color: (page === item.id || (page === 'detail' && item.id === 'influencers')) ? 'white' : 'var(--text)', fontSize: 13, fontWeight: 500, cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit' }}
+              >
+                <span style={{ opacity: 0.7 }}>{item.icon}</span>
+                {item.label}
+                {item.id === 'influencers' && count > 0 && (
+                  <span style={{ marginLeft: 'auto', background: 'var(--accent)', color: 'white', fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 20 }}>{count}</span>
+                )}
+              </button>
+            ))}
+            <div style={{ height: 1, background: 'var(--border)', margin: '4px 0' }} />
+            <button
+              onClick={() => { onSignOut(); setOpen(false) }}
+              style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '9px 12px', borderRadius: 8, border: 'none', background: 'transparent', color: 'var(--text-muted)', fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+              Sign out
+            </button>
+          </div>
+        )}
+      </div>
+    </header>
+  )
+}
 
 const PAGE_TITLES = {
   dashboard:          'Dashboard',
@@ -72,6 +159,9 @@ export default function App() {
   const isCarouselPipeline = page === 'carousel-pipeline'
   const title = page === 'detail' ? 'Influencer' : PAGE_TITLES[page] || ''
 
+  const mobileBackLabel = page === 'detail' ? 'Influencers' : isCarouselPipeline ? 'Back' : null
+  const mobileOnBack    = page === 'detail' ? closeDetail : isCarouselPipeline ? closeCarouselPipeline : null
+
   return (
     <div className="app-shell">
       <Sidebar
@@ -80,6 +170,19 @@ export default function App() {
         count={influencerCount}
       />
       <div className="main-area">
+        {/* Mobile header — visible only on small screens */}
+        {!isPipelineBuilder && (
+          <MobileHeader
+            page={page}
+            setPage={p => { setDetailId(null); setPipelineCtx(null); setPage(p) }}
+            count={influencerCount}
+            onSignOut={handleSignOut}
+            title={title}
+            onBack={mobileOnBack}
+            backLabel={mobileBackLabel}
+          />
+        )}
+
         {/* Hide topbar in pipeline builder — it has its own */}
         {!isPipelineBuilder && (
           <header className="topbar">
