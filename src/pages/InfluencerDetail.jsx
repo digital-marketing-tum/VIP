@@ -232,6 +232,8 @@ export default function InfluencerDetail({ id, onBack, onOpenPipeline, onNewPipe
   const [executions, setExecutions]   = useState([])
   const [selectedPost, setSelectedPost] = useState(null)
   const [activeTab, setActiveTab]   = useState('persona')
+  const [postFilter, setPostFilter] = useState('all')
+  const [hoveredImg, setHoveredImg] = useState(null)
   const fileRef = useRef(null)
 
   useEffect(() => {
@@ -330,6 +332,12 @@ export default function InfluencerDetail({ id, onBack, onOpenPipeline, onNewPipe
   const postedCount    = executions.filter(e => e.posted).length
   const notPostedCount = executions.length - postedCount
 
+  const filteredExecutions = postFilter === 'posted'
+    ? executions.filter(e => e.posted)
+    : postFilter === 'unposted'
+    ? executions.filter(e => !e.posted)
+    : executions
+
   async function togglePosted(exId, current) {
     const posted = !current
     setExecutions(prev => prev.map(e => e.id === exId ? { ...e, posted } : e))
@@ -337,187 +345,282 @@ export default function InfluencerDetail({ id, onBack, onOpenPipeline, onNewPipe
     await supabase.from('carousel_executions').update({ posted }).eq('id', exId)
   }
 
+  // Derive a readable RGB from hex for CSS rgba() usage
+  function hexAlpha(hex, alpha) {
+    const r = parseInt(hex.slice(1,3),16)
+    const g = parseInt(hex.slice(3,5),16)
+    const b = parseInt(hex.slice(5,7),16)
+    return `rgba(${r},${g},${b},${alpha})`
+  }
+  const color = inf.color || '#2563EB'
+
   const TABS = [
-    { id: 'persona',   label: 'Persona' },
-    { id: 'account',   label: 'Account' },
-    { id: 'images',    label: 'Reference Images' },
-    { id: 'pipelines', label: 'Pipelines' },
-    { id: 'posts',     label: `Posts${executions.length ? ` (${executions.length})` : ''}` },
+    { id: 'persona',   label: 'Persona',   icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg> },
+    { id: 'account',   label: 'Account',   icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="7.5" cy="15.5" r="5.5"/><path d="M21 2l-9.6 9.6"/><path d="M15.5 7.5l3 3L21 8l-3-3"/></svg> },
+    { id: 'images',    label: 'Ref Images',icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg> },
+    { id: 'pipelines', label: 'Pipelines', icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg> },
+    { id: 'posts',     label: 'Posts',     icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>, count: executions.length || null },
   ]
+
+  // Field card — labeled block with influencer color left border
+  function FieldCard({ label, children }) {
+    return (
+      <div style={{
+        background: 'var(--surface)', borderRadius: '0 10px 10px 0',
+        border: '1px solid var(--border)', borderLeft: `3px solid ${color}`,
+        padding: '14px 18px', marginBottom: 12,
+      }}>
+        <div style={{ fontSize: 10, fontWeight: 700, color: hexAlpha(color, 0.9), textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>{label}</div>
+        {children}
+      </div>
+    )
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', margin: '-28px -32px', minHeight: 'calc(100vh - 58px)' }}>
 
-      {/* ── Page header ── */}
+      {/* ── Hero Header ── */}
       <div style={{
-        display: 'flex', alignItems: 'center', gap: 14,
-        padding: '18px 32px 0',
-        borderBottom: '1px solid var(--border)',
+        position: 'relative', overflow: 'hidden',
         background: 'var(--surface)',
+        borderBottom: '1px solid var(--border)',
       }}>
-        {/* Avatar */}
+        {/* Color wash gradient */}
         <div style={{
-          width: 42, height: 42, borderRadius: 12, background: inf.color,
-          flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: 18, fontWeight: 700, color: 'white', overflow: 'hidden',
-        }}>
-          {images[0]
-            ? <img src={images[0]} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="" />
-            : inf.name.charAt(0).toUpperCase()
-          }
+          position: 'absolute', inset: 0, pointerEvents: 'none',
+          background: `linear-gradient(135deg, ${hexAlpha(color, 0.18)} 0%, transparent 55%)`,
+        }} />
+        {/* Thin top color bar */}
+        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: color }} />
+
+        <div style={{ position: 'relative', padding: '22px 32px 0' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 18, marginBottom: 16 }}>
+            {/* Avatar with color ring */}
+            <div style={{
+              width: 64, height: 64, borderRadius: 18, flexShrink: 0,
+              background: color, overflow: 'hidden',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 26, fontWeight: 800, color: 'white',
+              boxShadow: `0 0 0 3px var(--surface), 0 0 0 5px ${hexAlpha(color, 0.45)}`,
+            }}>
+              {images[0]
+                ? <img src={images[0]} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="" />
+                : inf.name.charAt(0).toUpperCase()
+              }
+            </div>
+
+            {/* Identity */}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--text)', lineHeight: 1.15, letterSpacing: '-0.01em' }}>{inf.name}</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 5, flexWrap: 'wrap' }}>
+                {inf.niche && (
+                  <span style={{
+                    fontSize: 11, fontWeight: 600, padding: '2px 9px', borderRadius: 20,
+                    background: hexAlpha(color, 0.15), color: color, border: `1px solid ${hexAlpha(color, 0.3)}`,
+                  }}>{inf.niche}</span>
+                )}
+                <span className={`badge ${inf.status}`}>{inf.status}</span>
+                <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                  {workflows.length + (inf.pipelines?.length || 0)} pipelines · {executions.length} posts
+                </span>
+              </div>
+            </div>
+
+            {/* Save area */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+              {saved
+                ? <span className="save-indicator show"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>Saved</span>
+                : <span style={{ fontSize: 12, color: 'var(--amber)', fontWeight: 500 }}>Unsaved changes</span>
+              }
+              <button className="btn btn-primary btn-sm" onClick={saveAll} disabled={saving}>
+                {saving ? 'Saving…' : 'Save Changes'}
+              </button>
+            </div>
+          </div>
+
+          {/* ── Tab bar ── */}
+          <div style={{ display: 'flex', gap: 0, marginBottom: -1 }}>
+            {TABS.map(tab => {
+              const active = activeTab === tab.id
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => { setActiveTab(tab.id); setSelectedPost(null) }}
+                  style={{
+                    background: 'none', border: 'none', cursor: 'pointer',
+                    padding: '9px 16px',
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    fontSize: 13, fontWeight: active ? 600 : 400,
+                    color: active ? color : 'var(--text-muted)',
+                    borderBottom: active ? `2px solid ${color}` : '2px solid transparent',
+                    transition: 'color 0.15s',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  <span style={{ opacity: active ? 1 : 0.6 }}>{tab.icon}</span>
+                  {tab.label}
+                  {tab.count ? (
+                    <span style={{
+                      fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 20,
+                      background: active ? hexAlpha(color, 0.15) : 'var(--surface2)',
+                      color: active ? color : 'var(--text-muted)',
+                    }}>{tab.count}</span>
+                  ) : null}
+                </button>
+              )
+            })}
+          </div>
         </div>
-
-        {/* Name + niche */}
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)', lineHeight: 1.2 }}>{inf.name}</div>
-          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>{inf.niche || 'No niche set'}</div>
-        </div>
-
-        {/* Save indicators */}
-        {saved
-          ? <span className="save-indicator show"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>Saved</span>
-          : <span style={{ fontSize: 12, color: 'var(--amber)', fontWeight: 500 }}>Unsaved changes</span>
-        }
-        <button className="btn btn-primary btn-sm" onClick={saveAll} disabled={saving}>
-          {saving ? 'Saving…' : 'Save Changes'}
-        </button>
-
-      </div>
-
-      {/* ── Tab bar ── */}
-      <div style={{
-        display: 'flex', gap: 0,
-        padding: '0 32px',
-        background: 'var(--surface)',
-        borderBottom: '1px solid var(--border)',
-      }}>
-        {TABS.map(tab => (
-          <button
-            key={tab.id}
-            onClick={() => { setActiveTab(tab.id); setSelectedPost(null) }}
-            style={{
-              background: 'none', border: 'none', cursor: 'pointer',
-              padding: '10px 16px',
-              fontSize: 13, fontWeight: activeTab === tab.id ? 600 : 400,
-              color: activeTab === tab.id ? 'var(--accent)' : 'var(--text-muted)',
-              borderBottom: activeTab === tab.id ? '2px solid var(--accent)' : '2px solid transparent',
-              marginBottom: -1,
-              transition: 'color 0.15s',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            {tab.label}
-          </button>
-        ))}
       </div>
 
       {/* ── Tab content ── */}
       <div style={{ flex: 1, padding: '28px 32px', overflowY: 'auto', background: 'var(--bg)' }}>
 
-        {/* Persona */}
+        {/* ── Persona ── */}
         {activeTab === 'persona' && (
-          <>
-            <div className="form-row">
-              <div className="form-group">
-                <label className="form-label">Personality</label>
-                <textarea className="form-textarea" value={form.personality} onChange={e => handleField('personality', e.target.value)} placeholder="Describe the influencer's personality traits..." />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Visual Style</label>
-                <textarea className="form-textarea" value={form.visualStyle} onChange={e => handleField('visualStyle', e.target.value)} placeholder="Aesthetic, color palette, lighting preferences..." />
-              </div>
+          <div style={{ maxWidth: 780 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 0 }}>
+              <FieldCard label="Personality">
+                <textarea className="form-textarea" value={form.personality} onChange={e => handleField('personality', e.target.value)} placeholder="Describe the influencer's personality traits..." style={{ border: 'none', background: 'transparent', padding: 0, boxShadow: 'none', resize: 'vertical', minHeight: 80 }} />
+              </FieldCard>
+              <FieldCard label="Visual Style">
+                <textarea className="form-textarea" value={form.visualStyle} onChange={e => handleField('visualStyle', e.target.value)} placeholder="Aesthetic, color palette, lighting preferences..." style={{ border: 'none', background: 'transparent', padding: 0, boxShadow: 'none', resize: 'vertical', minHeight: 80 }} />
+              </FieldCard>
             </div>
-            <div className="form-row">
-              <div className="form-group">
-                <label className="form-label">Tone of Voice</label>
-                <input className="form-input" value={form.tone} onChange={e => handleField('tone', e.target.value)} placeholder="e.g. Playful and relatable, professional..." />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Target Audience</label>
-                <input className="form-input" value={form.audience} onChange={e => handleField('audience', e.target.value)} placeholder="e.g. Women 18–28, fashion enthusiasts..." />
-              </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <FieldCard label="Tone of Voice">
+                <input className="form-input" value={form.tone} onChange={e => handleField('tone', e.target.value)} placeholder="e.g. Playful and relatable, professional..." style={{ border: 'none', background: 'transparent', padding: 0, boxShadow: 'none' }} />
+              </FieldCard>
+              <FieldCard label="Target Audience">
+                <input className="form-input" value={form.audience} onChange={e => handleField('audience', e.target.value)} placeholder="e.g. Women 18–28, fashion enthusiasts..." style={{ border: 'none', background: 'transparent', padding: 0, boxShadow: 'none' }} />
+              </FieldCard>
             </div>
-            <div className="form-group" style={{ marginBottom: 16 }}>
-              <label className="form-label">Topics to Avoid</label>
-              <input className="form-input" value={form.avoid} onChange={e => handleField('avoid', e.target.value)} placeholder="e.g. Politics, explicit content, competitor brands..." />
-            </div>
-            <div>
-              <label className="form-label" style={{ marginBottom: 8, display: 'block' }}>Posting Frequency</label>
-              <div className="freq-row">
+            <FieldCard label="Topics to Avoid">
+              <input className="form-input" value={form.avoid} onChange={e => handleField('avoid', e.target.value)} placeholder="e.g. Politics, explicit content, competitor brands..." style={{ border: 'none', background: 'transparent', padding: 0, boxShadow: 'none' }} />
+            </FieldCard>
+            <FieldCard label="Posting Frequency">
+              <div style={{ display: 'flex', gap: 24 }}>
                 {[['freqIg','Instagram'],['freqTt','TikTok'],['freqYt','YouTube']].map(([key, label]) => (
-                  <div key={key} className="freq-group">
-                    <label>{label}</label>
-                    <input className="form-input" style={{ width: 70 }} value={form[key] || ''} onChange={e => handleField(key, e.target.value)} placeholder="0" type="number" min="0" />
-                    <span>/ week</span>
+                  <div key={key} style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'center' }}>
+                    <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 500 }}>{label}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <input className="form-input" style={{ width: 56, textAlign: 'center', border: 'none', background: 'var(--surface2)', padding: '4px 8px', boxShadow: 'none' }} value={form[key] || ''} onChange={e => handleField(key, e.target.value)} placeholder="0" type="number" min="0" />
+                      <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>/ wk</span>
+                    </div>
                   </div>
                 ))}
               </div>
-            </div>
-          </>
+            </FieldCard>
+          </div>
         )}
 
-        {/* Account */}
+        {/* ── Account ── */}
         {activeTab === 'account' && (
-          <AccountSection platforms={inf.platforms} accounts={accounts} onChange={handleAccountsChange} />
+          <div style={{ maxWidth: 640 }}>
+            <AccountSection platforms={inf.platforms} accounts={accounts} onChange={handleAccountsChange} />
+          </div>
         )}
 
-        {/* Reference Images */}
+        {/* ── Reference Images ── */}
         {activeTab === 'images' && (
           <>
-            <div className="ref-images-grid">
-              {images.map((src, i) => (
-                <div key={i} className="ref-img-slot">
-                  <img src={src} alt="" />
-                  <button className="remove-img" onClick={() => removeImage(i)}>✕</button>
-                </div>
-              ))}
-              {images.length < 10 && (
-                <div className="ref-img-slot" onClick={() => fileRef.current?.click()}>
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                    <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-                  </svg>
-                </div>
-              )}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 10, marginBottom: 14 }}>
+              {images.map((src, i) => {
+                const hovered = hoveredImg === i
+                return (
+                  <div
+                    key={i}
+                    style={{ position: 'relative', paddingTop: '150%', borderRadius: 12, overflow: 'hidden', border: `1px solid ${hovered ? hexAlpha(color, 0.5) : 'var(--border)'}`, background: 'var(--surface)', transition: 'border-color 0.2s, box-shadow 0.2s', boxShadow: hovered ? `0 6px 20px rgba(0,0,0,0.35)` : 'none', cursor: 'pointer' }}
+                    onMouseEnter={() => setHoveredImg(i)}
+                    onMouseLeave={() => setHoveredImg(null)}
+                  >
+                    <img
+                      src={src} alt=""
+                      style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', transition: 'transform 0.3s, filter 0.2s', transform: hovered ? 'scale(1.04)' : 'scale(1)', filter: hovered ? 'brightness(0.65)' : 'brightness(1)' }}
+                    />
+                    {/* Delete button — trash icon */}
+                    <button
+                      onClick={() => removeImage(i)}
+                      style={{
+                        position: 'absolute', top: 8, right: 8, width: 28, height: 28,
+                        borderRadius: 8, border: 'none', background: 'rgba(15,15,15,0.75)',
+                        color: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        backdropFilter: 'blur(4px)',
+                        opacity: hovered ? 1 : 0, transform: hovered ? 'scale(1)' : 'scale(0.8)',
+                        transition: 'opacity 0.2s, transform 0.2s',
+                      }}
+                    >
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+                        <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
+                      </svg>
+                    </button>
+                  </div>
+                )
+              })}
             </div>
+            {images.length < 10 && (
+              <div
+                onClick={() => fileRef.current?.click()}
+                style={{
+                  border: `2px dashed ${hexAlpha(color, 0.4)}`, borderRadius: 12,
+                  padding: '24px 20px', textAlign: 'center', cursor: 'pointer',
+                  background: hexAlpha(color, 0.04), transition: 'all 0.15s',
+                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
+                }}
+                onMouseEnter={e => { e.currentTarget.style.background = hexAlpha(color, 0.08); e.currentTarget.style.borderColor = hexAlpha(color, 0.7) }}
+                onMouseLeave={e => { e.currentTarget.style.background = hexAlpha(color, 0.04); e.currentTarget.style.borderColor = hexAlpha(color, 0.4) }}
+              >
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+                </svg>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>Upload reference photos</div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{10 - images.length} slots remaining</div>
+              </div>
+            )}
             <input ref={fileRef} type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={e => handleImageUpload(e.target.files)} />
           </>
         )}
 
-        {/* Pipelines */}
+        {/* ── Pipelines ── */}
         {activeTab === 'pipelines' && (
           <>
+            {/* Carousel Pipeline — glass card */}
             <div
               onClick={() => onNewCarousel?.()}
               style={{
-                background: 'var(--accent-bg)', border: '1px solid #bfdbfe',
-                borderRadius: 10, padding: '14px 18px', marginBottom: 14,
-                display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer',
-                transition: 'all 0.12s',
+                position: 'relative', overflow: 'hidden',
+                background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
+                border: '1px solid rgba(255,255,255,0.08)',
+                borderRadius: 14, padding: '18px 20px', marginBottom: 16,
+                display: 'flex', alignItems: 'center', gap: 14, cursor: 'pointer',
+                transition: 'transform 0.12s, box-shadow 0.12s',
+                boxShadow: '0 4px 24px rgba(0,0,0,0.3)',
               }}
-              onMouseEnter={e => e.currentTarget.style.background = '#dbeafe'}
-              onMouseLeave={e => e.currentTarget.style.background = 'var(--accent-bg)'}
+              onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 8px 32px rgba(0,0,0,0.4)' }}
+              onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 4px 24px rgba(0,0,0,0.3)' }}
             >
-              <div style={{ width: 34, height: 34, borderRadius: 9, background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2">
+              {/* Glow blob */}
+              <div style={{ position: 'absolute', top: -20, right: 40, width: 120, height: 120, borderRadius: '50%', background: hexAlpha(color, 0.2), filter: 'blur(40px)', pointerEvents: 'none' }} />
+              <div style={{
+                width: 40, height: 40, borderRadius: 11, background: hexAlpha(color, 0.2),
+                border: `1px solid ${hexAlpha(color, 0.3)}`,
+                display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+              }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2">
                   <rect x="2" y="3" width="6" height="18" rx="1"/><rect x="9" y="3" width="6" height="18" rx="1"/><rect x="16" y="3" width="6" height="18" rx="1"/>
                 </svg>
               </div>
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--accent)' }}>Carousel Pipeline</div>
-                <div style={{ fontSize: 11, color: '#3b82f6', marginTop: 2 }}>Generate full AI carousels — idea → prompts → images</div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: 'white', marginBottom: 3 }}>Carousel Pipeline</div>
+                <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)' }}>idea → prompts → images → caption</div>
               </div>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="2.5"><polyline points="9 18 15 12 9 6"/></svg>
             </div>
 
+            {/* Node workflows */}
             <div className="pipeline-list">
               {workflows.map(wf => (
-                <div key={wf.id} className="pipeline-item">
-                  <div className="pipeline-type-icon video">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
-                      <rect x="3" y="14" width="7" height="7" rx="1"/><line x1="14" y1="17" x2="21" y2="17"/><line x1="17" y1="14" x2="17" y2="21"/>
-                    </svg>
-                  </div>
+                <div key={wf.id} className="pipeline-item" style={{ borderLeft: `3px solid ${hexAlpha(color, 0.5)}`, paddingLeft: 14, borderRadius: '0 8px 8px 0' }}>
                   <div className="pipeline-info">
                     <div className="pipeline-name">{wf.name}</div>
                     <div className="pipeline-detail">{wf.nodes?.length || 0} nodes · Updated {new Date(wf.updated_at).toLocaleDateString()}</div>
@@ -526,25 +629,22 @@ export default function InfluencerDetail({ id, onBack, onOpenPipeline, onNewPipe
                 </div>
               ))}
               {workflows.length === 0 && (
-                <div style={{ color: 'var(--text-muted)', fontSize: 13, textAlign: 'center', padding: '12px 0' }}>No node pipelines yet</div>
+                <div style={{ color: 'var(--text-muted)', fontSize: 13, textAlign: 'center', padding: '16px 0' }}>No node pipelines yet</div>
               )}
             </div>
             <button className="add-pipeline-btn" style={{ marginTop: 12 }} onClick={() => onNewPipeline?.()}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-              </svg>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
               New Node Pipeline
             </button>
           </>
         )}
 
-        {/* Posts */}
+        {/* ── Posts ── */}
         {activeTab === 'posts' && (
           <>
             {selectedPost ? (
               <>
-                {/* Post detail */}
-                <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ marginBottom: 20, display: 'flex', alignItems: 'center', gap: 10 }}>
                   <button className="btn btn-ghost btn-sm" onClick={() => setSelectedPost(null)} style={{ gap: 5, paddingLeft: 6 }}>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="15 18 9 12 15 6"/></svg>
                     All Posts
@@ -607,58 +707,89 @@ export default function InfluencerDetail({ id, onBack, onOpenPipeline, onNewPipe
               </>
             ) : (
               <>
-                {/* Posts sub-header */}
+                {/* Filter pills */}
                 {executions.length > 0 && (
-                  <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 14 }}>
-                    {postedCount} posted · {notPostedCount} not posted
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 18 }}>
+                    {[
+                      { id: 'all',     label: `All (${executions.length})` },
+                      { id: 'posted',  label: `Posted (${postedCount})` },
+                      { id: 'unposted',label: `Not posted (${notPostedCount})` },
+                    ].map(f => (
+                      <button
+                        key={f.id}
+                        onClick={() => setPostFilter(f.id)}
+                        style={{
+                          padding: '5px 13px', borderRadius: 20, border: '1px solid',
+                          fontSize: 12, fontWeight: postFilter === f.id ? 600 : 400,
+                          cursor: 'pointer', transition: 'all 0.15s',
+                          background: postFilter === f.id ? hexAlpha(color, 0.12) : 'transparent',
+                          borderColor: postFilter === f.id ? hexAlpha(color, 0.5) : 'var(--border)',
+                          color: postFilter === f.id ? color : 'var(--text-muted)',
+                        }}
+                      >{f.label}</button>
+                    ))}
                   </div>
                 )}
+
                 {executions.length === 0 ? (
-                  <p style={{ fontSize: 13, color: 'var(--text-muted)', textAlign: 'center', padding: '40px 0' }}>
-                    No posts yet — run a Carousel Pipeline to generate content.
-                  </p>
+                  <div style={{ textAlign: 'center', padding: '60px 0', color: 'var(--text-muted)' }}>
+                    <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" style={{ opacity: 0.3, marginBottom: 12 }}>
+                      <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
+                    </svg>
+                    <div style={{ fontSize: 13 }}>No posts yet — run a Carousel Pipeline to generate content.</div>
+                  </div>
                 ) : (
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 10 }}>
-                    {executions.map(ex => {
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(155px, 1fr))', gap: 12 }}>
+                    {filteredExecutions.map(ex => {
                       const thumb = ex.images?.[0]?.src
                       return (
                         <div
                           key={ex.id}
                           onClick={() => setSelectedPost(ex)}
-                          style={{ background: 'var(--surface2)', borderRadius: 10, overflow: 'hidden', border: '1px solid var(--border)', cursor: 'pointer', transition: 'box-shadow 0.12s' }}
-                          onMouseEnter={e => e.currentTarget.style.boxShadow = 'var(--shadow-md)'}
-                          onMouseLeave={e => e.currentTarget.style.boxShadow = 'none'}
+                          style={{ background: 'var(--surface)', borderRadius: 12, overflow: 'hidden', border: '1px solid var(--border)', cursor: 'pointer', transition: 'transform 0.12s, box-shadow 0.12s' }}
+                          onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 8px 24px rgba(0,0,0,0.25)' }}
+                          onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'none' }}
                         >
-                          <div style={{ position: 'relative', paddingTop: '100%', background: 'var(--surface)' }}>
+                          {/* Thumbnail — 4:5 ratio */}
+                          <div style={{ position: 'relative', paddingTop: '125%', background: 'var(--surface2)' }}>
                             {thumb
                               ? <img src={thumb} alt={ex.title} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
-                              : <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
-                                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                              : <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', opacity: 0.4 }}>
+                                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
                                 </div>
                             }
-                            <div style={{ position: 'absolute', top: 6, right: 6, fontSize: 9, fontWeight: 700, padding: '2px 6px', borderRadius: 20, background: 'rgba(0,0,0,0.55)', color: 'white' }}>
-                              {ex.images?.length || 0}
+                            {/* Slide count badge */}
+                            <div style={{ position: 'absolute', bottom: 7, right: 7, fontSize: 9, fontWeight: 700, padding: '2px 6px', borderRadius: 20, background: 'rgba(0,0,0,0.6)', color: 'white' }}>
+                              {ex.images?.length || 0} slides
                             </div>
+                            {/* Posted status dot */}
+                            <div style={{
+                              position: 'absolute', top: 7, left: 7,
+                              width: 8, height: 8, borderRadius: '50%',
+                              background: ex.posted ? '#4ade80' : 'rgba(255,255,255,0.25)',
+                              border: '1.5px solid rgba(0,0,0,0.4)',
+                              boxShadow: ex.posted ? '0 0 6px rgba(74,222,128,0.6)' : 'none',
+                            }} />
                           </div>
-                          <div style={{ padding: '8px 10px' }}>
+                          {/* Info */}
+                          <div style={{ padding: '9px 11px 11px' }}>
                             <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ex.title}</div>
                             {ex.topic && <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ex.topic}</div>}
-                            <div style={{ marginTop: 6 }}>
-                              <button
-                                onClick={e => { e.stopPropagation(); togglePosted(ex.id, ex.posted) }}
-                                style={{
-                                  padding: '2px 8px', borderRadius: 20, border: '1px solid',
-                                  fontSize: 9, fontWeight: 600, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4,
-                                  background: ex.posted ? 'rgba(74,222,128,0.12)' : 'transparent',
-                                  borderColor: ex.posted ? '#4ade80' : 'var(--border)',
-                                  color: ex.posted ? '#4ade80' : 'var(--text-muted)',
-                                  transition: 'all 0.15s',
-                                }}
-                              >
-                                <span style={{ width: 4, height: 4, borderRadius: '50%', background: ex.posted ? '#4ade80' : 'var(--text-muted)', flexShrink: 0 }} />
-                                {ex.posted ? 'Posted' : 'Not posted'}
-                              </button>
-                            </div>
+                            {/* Posted toggle */}
+                            <button
+                              onClick={e => { e.stopPropagation(); togglePosted(ex.id, ex.posted) }}
+                              style={{
+                                marginTop: 8, padding: '3px 9px', borderRadius: 20, border: '1px solid',
+                                fontSize: 9, fontWeight: 600, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4,
+                                background: ex.posted ? 'rgba(74,222,128,0.1)' : 'transparent',
+                                borderColor: ex.posted ? '#4ade80' : 'var(--border)',
+                                color: ex.posted ? '#4ade80' : 'var(--text-muted)',
+                                transition: 'all 0.15s',
+                              }}
+                            >
+                              <span style={{ width: 4, height: 4, borderRadius: '50%', background: ex.posted ? '#4ade80' : 'var(--text-muted)', flexShrink: 0 }} />
+                              {ex.posted ? 'Posted' : 'Not posted'}
+                            </button>
                           </div>
                         </div>
                       )

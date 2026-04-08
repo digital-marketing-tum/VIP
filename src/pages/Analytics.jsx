@@ -3,7 +3,6 @@ import { Store } from '../store'
 import { supabase } from '../supabase'
 import { fetchInstagramData } from '../services/instagram'
 
-const LS_KEY = 'rapidapi_key'
 
 function proxyImg(url) {
   if (!url) return url
@@ -396,10 +395,16 @@ function ApiKeySetup({ onSave }) {
 
 // ── IG Analytics Section ──────────────────────────────────────────────────────
 function IgAnalyticsSection({ influencers }) {
-  const [apiKey, setApiKey]       = useState(() => localStorage.getItem(LS_KEY) || '')
+  const [apiKey, setApiKey]       = useState('')
   const [igData, setIgData]       = useState({})
   const [editKey, setEditKey]     = useState(false)
   const [drafts, setDrafts]       = useState({}) // inf.id -> draft username string
+
+  // Load key from Supabase on mount
+  useEffect(() => {
+    supabase.from('api_keys').select('rapid_key').single()
+      .then(({ data }) => { if (data?.rapid_key) setApiKey(data.rapid_key) })
+  }, [])
 
   function getConfiguredUsername(inf) {
     return inf.accounts?.find(a => a.platform === 'ig')?.username || ''
@@ -446,14 +451,16 @@ function IgAnalyticsSection({ influencers }) {
       .catch(err => setIgData(prev => ({ ...prev, [inf.id]: { error: err.message } })))
   }
 
-  function saveKey(key) {
-    localStorage.setItem(LS_KEY, key)
+  async function saveKey(key) {
+    const { data: { user } } = await supabase.auth.getUser()
+    await supabase.from('api_keys').upsert({ user_id: user.id, rapid_key: key, updated_at: new Date().toISOString() })
     setApiKey(key)
     setEditKey(false)
   }
 
-  function removeKey() {
-    localStorage.removeItem(LS_KEY)
+  async function removeKey() {
+    const { data: { user } } = await supabase.auth.getUser()
+    await supabase.from('api_keys').upsert({ user_id: user.id, rapid_key: '', updated_at: new Date().toISOString() })
     setApiKey('')
     setIgData({})
   }
