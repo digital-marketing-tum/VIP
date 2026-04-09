@@ -16,7 +16,7 @@ AI-powered content pipeline manager for Instagram creators. Manage influencer pe
 1. Go to [console.cloud.google.com](https://console.cloud.google.com)
 2. Create a project → Enable **Google Drive API** and **Google Identity Services**
 3. Create an **OAuth 2.0 Client ID** (Web application)
-4. Add your local/deployed URL to Authorized JavaScript Origins (e.g. `http://localhost:5173`)
+4. Add your local/deployed URL to Authorized JavaScript Origins
 5. Also add it as an Authorized redirect URI in your Supabase Auth settings
 
 ### 3. Environment variables
