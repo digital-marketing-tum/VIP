@@ -10,6 +10,7 @@ import InfluencerDetail from './pages/InfluencerDetail'
 import PipelineBuilder from './pages/PipelineBuilder'
 import CarouselPipeline from './pages/CarouselPipeline'
 import SimpleVideoPipeline from './pages/SimpleVideoPipeline'
+import Instagram from './pages/Instagram'
 
 // ── Mobile nav ────────────────────────────────────────────────────────────────
 function MobileHeader({ page, setPage, count, onSignOut, title, onBack, backLabel }) {
@@ -27,6 +28,7 @@ function MobileHeader({ page, setPage, count, onSignOut, title, onBack, backLabe
     { id: 'dashboard',   label: 'Dashboard',   icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg> },
     { id: 'influencers', label: 'Influencers',  icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="9" cy="7" r="4"/><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/><path d="M21 21v-2a4 4 0 0 0-3-3.85"/></svg> },
     { id: 'analytics',   label: 'Analytics',   icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg> },
+    { id: 'instagram',   label: 'Instagram',   icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1" fill="currentColor" stroke="none"/></svg> },
     { id: 'settings',    label: 'Settings',    icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg> },
   ]
 
@@ -99,10 +101,11 @@ function MobileHeader({ page, setPage, count, onSignOut, title, onBack, backLabe
 }
 
 const PAGE_TITLES = {
-  dashboard:          'Dashboard',
-  influencers:        'Virtual Influencers',
-  analytics:          'Analytics',
-  settings:           'Settings',
+  dashboard:           'Dashboard',
+  influencers:         'Virtual Influencers',
+  analytics:           'Analytics',
+  instagram:           'Instagram',
+  settings:            'Settings',
   'carousel-pipeline': 'Carousel Pipeline',
   'video-pipeline':    'Simple Video Pipeline',
 }
@@ -237,6 +240,7 @@ export default function App() {
           {page === 'dashboard'    && <Dashboard onOpenDetail={openDetail} />}
           {page === 'influencers'  && <Influencers onOpenDetail={openDetail} onCountChange={setInfluencerCount} />}
           {page === 'analytics'    && <Analytics />}
+          {page === 'instagram'    && <Instagram onGoToSettings={() => setPage('settings')} />}
           {page === 'settings'     && <Settings />}
           {page === 'detail' && detailId && (
             <InfluencerDetail

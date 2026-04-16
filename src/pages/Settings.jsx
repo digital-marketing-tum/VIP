@@ -2,20 +2,25 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../supabase'
 
 export default function Settings() {
-  const [geminiKey, setGeminiKey] = useState('')
-  const [rapidKey,  setRapidKey]  = useState('')
-  const [show, setShow]           = useState(false)
-  const [showRapid, setShowRapid] = useState(false)
-  const [saving, setSaving]       = useState(false)
-  const [saved, setSaved]         = useState(false)
-  const [loading, setLoading]     = useState(true)
+  const [geminiKey, setGeminiKey]       = useState('')
+  const [rapidKey,  setRapidKey]        = useState('')
+  const [igToken,   setIgToken]         = useState('')
+  const [metaAppId, setMetaAppId]       = useState('')
+  const [show, setShow]                 = useState(false)
+  const [showRapid, setShowRapid]       = useState(false)
+  const [showIgToken, setShowIgToken]   = useState(false)
+  const [saving, setSaving]             = useState(false)
+  const [saved, setSaved]               = useState(false)
+  const [loading, setLoading]           = useState(true)
 
   useEffect(() => {
-    supabase.from('api_keys').select('gemini_key, rapid_key').single()
+    supabase.from('api_keys').select('gemini_key, rapid_key, ig_access_token, meta_app_id').single()
       .then(({ data }) => {
         if (data) {
-          setGeminiKey(data.gemini_key || '')
-          setRapidKey(data.rapid_key   || '')
+          setGeminiKey(data.gemini_key       || '')
+          setRapidKey(data.rapid_key         || '')
+          setIgToken(data.ig_access_token    || '')
+          setMetaAppId(data.meta_app_id      || '')
         }
         setLoading(false)
       })
@@ -25,10 +30,12 @@ export default function Settings() {
     setSaving(true)
     const { data: { user } } = await supabase.auth.getUser()
     await supabase.from('api_keys').upsert({
-      user_id:    user.id,
-      gemini_key: geminiKey,
-      rapid_key:  rapidKey,
-      updated_at: new Date().toISOString(),
+      user_id:          user.id,
+      gemini_key:       geminiKey,
+      rapid_key:        rapidKey,
+      ig_access_token:  igToken,
+      meta_app_id:      metaAppId,
+      updated_at:       new Date().toISOString(),
     })
     setSaving(false)
     setSaved(true)
@@ -136,6 +143,71 @@ export default function Settings() {
           <div style={{ padding: '0 24px 20px', display: 'flex', alignItems: 'center', gap: 12 }}>
             <button className="btn btn-primary" onClick={save} disabled={saving || loading}>
               {saving ? 'Saving…' : 'Save Key'}
+            </button>
+            {saved && (
+              <span style={{ fontSize: 12, color: 'var(--green)', fontWeight: 500, display: 'flex', alignItems: 'center', gap: 4 }}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                Saved
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Instagram Graph API */}
+        <div className="card">
+          <div className="card-header">
+            <span className="card-title">Instagram Graph API</span>
+          </div>
+          <div className="card-body">
+            <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 18, lineHeight: 1.6 }}>
+              Connects your Instagram Business or Creator account via the official Meta Graph API.
+              Get these values at <strong>developers.facebook.com</strong> → your app → Instagram → API setup.
+            </p>
+
+            <div className="form-group">
+              <label className="form-label">Meta App ID</label>
+              <input
+                className="form-input"
+                type="text"
+                value={metaAppId}
+                onChange={e => setMetaAppId(e.target.value)}
+                placeholder={loading ? 'Loading…' : 'Your Meta App ID'}
+                disabled={loading}
+              />
+            </div>
+
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label className="form-label">Access Token</label>
+              <div style={{ position: 'relative' }}>
+                <input
+                  className="form-input"
+                  type={showIgToken ? 'text' : 'password'}
+                  value={igToken}
+                  onChange={e => setIgToken(e.target.value)}
+                  placeholder={loading ? 'Loading…' : 'Long-lived user access token'}
+                  disabled={loading}
+                  style={{ paddingRight: 40 }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowIgToken(s => !s)}
+                  style={{
+                    position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
+                    background: 'none', border: 'none', cursor: 'pointer',
+                    color: 'var(--text-muted)', padding: 0, display: 'flex',
+                  }}
+                >
+                  {showIgToken
+                    ? <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                    : <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                  }
+                </button>
+              </div>
+            </div>
+          </div>
+          <div style={{ padding: '0 24px 20px', display: 'flex', alignItems: 'center', gap: 12 }}>
+            <button className="btn btn-primary" onClick={save} disabled={saving || loading}>
+              {saving ? 'Saving…' : 'Save'}
             </button>
             {saved && (
               <span style={{ fontSize: 12, color: 'var(--green)', fontWeight: 500, display: 'flex', alignItems: 'center', gap: 4 }}>

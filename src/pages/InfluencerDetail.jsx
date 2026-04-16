@@ -2,6 +2,7 @@ import { useState, useRef, useCallback, useEffect } from 'react'
 import { Store } from '../store'
 import { supabase } from '../supabase'
 import { getToken, listFolders, savePostToDrive } from '../services/drive'
+import { publishCarousel } from '../services/instagramGraph'
 
 const PLATFORM_LABELS = { ig: 'Instagram', tt: 'TikTok', yt: 'YouTube' }
 
@@ -99,6 +100,33 @@ function AccountSection({ platforms, accounts, onChange }) {
               </div>
             </div>
           </div>
+          {p === 'ig' && (
+            <>
+              <div className="form-group" style={{ marginTop: 4 }}>
+                <label className="form-label">Instagram User ID</label>
+                <input
+                  className="form-input"
+                  type="text"
+                  value={get(p, 'ig_user_id')}
+                  onChange={e => update(p, 'ig_user_id', e.target.value)}
+                  placeholder="Numeric Business/Creator User ID"
+                />
+              </div>
+              <div className="form-group" style={{ marginTop: 4 }}>
+                <label className="form-label">Access Token</label>
+                <input
+                  className="form-input"
+                  type="password"
+                  value={get(p, 'ig_access_token')}
+                  onChange={e => update(p, 'ig_access_token', e.target.value)}
+                  placeholder="Long-lived user access token"
+                />
+              </div>
+              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                Required to post via the Instagram Graph API
+              </span>
+            </>
+          )}
         </div>
       ))}
     </div>
@@ -784,6 +812,10 @@ export default function InfluencerDetail({ id, onBack, onOpenPipeline, onOpenCar
   const [datePreset,   setDatePreset]   = useState('all')
   const [postedFilter, setPostedFilter] = useState('all')  // 'all' | 'posted' | 'not-posted'
   const [drivePost, setDrivePost] = useState(null)
+  const [editImages, setEditImages] = useState([])
+  const [igPosting, setIgPosting]   = useState(false)
+  const [igStatus,  setIgStatus]    = useState(null)  // null | 'success' | error string
+  const [cardIgState, setCardIgState] = useState({})  // { [exId]: null | 'posting' | 'error:<msg>' }
   const [activeTab, setActiveTab]   = useState('persona')
   const [hoveredImg, setHoveredImg] = useState(null)
   const fileRef = useRef(null)
@@ -828,6 +860,11 @@ export default function InfluencerDetail({ id, onBack, onOpenPipeline, onOpenCar
       .eq('influencer_id', id).order('created_at', { ascending: false })
       .then(({ data }) => setExecutions(data || []))
   }, [id])
+
+  useEffect(() => {
+    setEditImages(selectedPost?.images || [])
+    setIgStatus(null)
+  }, [selectedPost?.id])
 
   const handleField = useCallback((key, val) => {
     setForm(f => ({ ...f, [key]: val }))
@@ -879,6 +916,80 @@ export default function InfluencerDetail({ id, onBack, onOpenPipeline, onOpenCar
     await supabase.from('carousel_executions').delete().eq('id', exId)
     setExecutions(prev => prev.filter(e => e.id !== exId))
     if (selectedPost?.id === exId) setSelectedPost(null)
+  }
+
+  async function persistSlides(newImages) {
+    setEditImages(newImages)
+    setSelectedPost(s => ({ ...s, images: newImages }))
+    setExecutions(prev => prev.map(e => e.id === selectedPost.id ? { ...e, images: newImages } : e))
+    await supabase.from('carousel_executions').update({ images: newImages }).eq('id', selectedPost.id)
+  }
+
+  function moveSlide(idx, dir) {
+    const imgs = [...editImages]
+    const to = idx + dir
+    if (to < 0 || to >= imgs.length) return
+    ;[imgs[idx], imgs[to]] = [imgs[to], imgs[idx]]
+    persistSlides(imgs)
+  }
+
+  async function deleteSlide(idx) {
+    if (!confirm('Remove this slide from the post?')) return
+    persistSlides(editImages.filter((_, i) => i !== idx))
+  }
+
+  async function postToInstagram() {
+    if (!editImages.length) return
+    setIgPosting(true)
+    setIgStatus(null)
+    try {
+      const igAcc = accounts.find(a => a.platform === 'ig')
+      if (!igAcc?.ig_user_id)
+        throw new Error('No Instagram User ID set for this influencer. Add it in the Account tab.')
+      if (!igAcc?.ig_access_token)
+        throw new Error('No access token set for this influencer. Add it in the Account tab.')
+      const caption = [selectedPost.caption, (selectedPost.hashtags || []).join(' ')].filter(Boolean).join('\n\n')
+      await publishCarousel({
+        igUserId:    igAcc.ig_user_id,
+        accessToken: igAcc.ig_access_token,
+        imageUrls:   editImages.map(img => img.src),
+        caption,
+      })
+      await supabase.from('carousel_executions').update({ posted: true }).eq('id', selectedPost.id)
+      setSelectedPost(s => ({ ...s, posted: true }))
+      setExecutions(prev => prev.map(e => e.id === selectedPost.id ? { ...e, posted: true } : e))
+      setIgStatus('success')
+    } catch (err) {
+      setIgStatus(err.message)
+    }
+    setIgPosting(false)
+  }
+
+  async function postToInstagramCard(ex) {
+    const images = (ex.images || []).filter(img => img.src)
+    if (images.length < 2) {
+      setCardIgState(s => ({ ...s, [ex.id]: 'error:At least 2 slides are required.' }))
+      return
+    }
+    setCardIgState(s => ({ ...s, [ex.id]: 'posting' }))
+    try {
+      const igAcc = accounts.find(a => a.platform === 'ig')
+      if (!igAcc?.ig_user_id)
+        throw new Error('No Instagram User ID set. Add it in the Account tab.')
+      if (!igAcc?.ig_access_token)
+        throw new Error('No access token set. Add it in the Account tab.')
+      const caption = [ex.caption, (ex.hashtags || []).join(' ')].filter(Boolean).join('\n\n')
+      await publishCarousel({
+        igUserId:    igAcc.ig_user_id,
+        accessToken: igAcc.ig_access_token,
+        imageUrls:   images.map(i => i.src),
+        caption,
+      })
+      await togglePosted(ex.id, false)
+      setCardIgState(s => ({ ...s, [ex.id]: null }))
+    } catch (err) {
+      setCardIgState(s => ({ ...s, [ex.id]: `error:${err.message}` }))
+    }
   }
 
   async function updateTitle(exId, title) {
@@ -1536,7 +1647,7 @@ export default function InfluencerDetail({ id, onBack, onOpenPipeline, onOpenCar
                   </button>
                   <button
                     className="btn btn-secondary btn-sm"
-                    onClick={() => downloadAllImages((selectedPost.images || []).map(img => ({ ...img, status: 'done' })))}
+                    onClick={() => downloadAllImages(editImages.map(img => ({ ...img, status: 'done' })))}
                     style={{ gap: 6, flexShrink: 0 }}
                   >
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
@@ -1552,17 +1663,74 @@ export default function InfluencerDetail({ id, onBack, onOpenPipeline, onOpenCar
                     <DriveIcon size={14} />
                     Save in Drive
                   </button>
+                  <button
+                    className="btn btn-primary btn-sm"
+                    onClick={postToInstagram}
+                    disabled={igPosting || editImages.length < 2}
+                    style={{ gap: 6, flexShrink: 0 }}
+                  >
+                    {igPosting ? (
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ animation: 'spin 0.8s linear infinite' }}><circle cx="12" cy="12" r="10" strokeDasharray="40 20"/></svg>
+                    ) : (
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="2" width="20" height="20" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1" fill="currentColor" stroke="none"/></svg>
+                    )}
+                    {igPosting ? 'Posting…' : 'Post to Instagram'}
+                  </button>
                 </div>
 
+                {igStatus === 'success' && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderRadius: 10, background: 'rgba(74,222,128,0.1)', border: '1px solid rgba(74,222,128,0.3)', fontSize: 13, color: '#4ade80', marginBottom: 4 }}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                    Posted to Instagram successfully!
+                  </div>
+                )}
+                {igStatus && igStatus !== 'success' && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderRadius: 10, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', fontSize: 13, color: '#f87171', marginBottom: 4 }}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ flexShrink: 0 }}><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                    {igStatus}
+                  </div>
+                )}
+
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10 }}>
-                  {(selectedPost.images || []).map(img => (
-                    <div key={img.position} style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                  {editImages.map((img, idx) => (
+                    <div key={img.src + idx} style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
                       <div style={{ position: 'relative', paddingTop: '125%', background: 'var(--surface2)', borderRadius: 10, overflow: 'hidden', border: '1px solid var(--border)' }}>
-                        <img src={img.src} alt={`Slide ${img.position}`} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
+                        <img src={img.src} alt={`Slide ${idx + 1}`} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
+
+                        {/* Position badge */}
                         <div style={{ position: 'absolute', top: 7, left: 7, width: 20, height: 20, borderRadius: 5, background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, color: 'white' }}>
-                          {img.position}
+                          {idx + 1}
                         </div>
-                        <a href={img.src} download={`slide-${img.position}.png`} style={{ position: 'absolute', top: 7, right: 7, width: 26, height: 26, borderRadius: 6, background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', textDecoration: 'none' }}>
+
+                        {/* Controls: top-right cluster */}
+                        <div style={{ position: 'absolute', top: 7, right: 7, display: 'flex', gap: 4 }}>
+                          <button
+                            title="Move up"
+                            disabled={idx === 0}
+                            onClick={() => moveSlide(idx, -1)}
+                            style={{ width: 24, height: 24, borderRadius: 5, background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)', border: 'none', color: 'white', cursor: idx === 0 ? 'default' : 'pointer', opacity: idx === 0 ? 0.35 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}
+                          >
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="18 15 12 9 6 15"/></svg>
+                          </button>
+                          <button
+                            title="Move down"
+                            disabled={idx === editImages.length - 1}
+                            onClick={() => moveSlide(idx, 1)}
+                            style={{ width: 24, height: 24, borderRadius: 5, background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)', border: 'none', color: 'white', cursor: idx === editImages.length - 1 ? 'default' : 'pointer', opacity: idx === editImages.length - 1 ? 0.35 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}
+                          >
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="6 9 12 15 18 9"/></svg>
+                          </button>
+                          <button
+                            title="Delete slide"
+                            onClick={() => deleteSlide(idx)}
+                            style={{ width: 24, height: 24, borderRadius: 5, background: 'rgba(180,0,0,0.65)', backdropFilter: 'blur(4px)', border: 'none', color: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}
+                          >
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                          </button>
+                        </div>
+
+                        {/* Download */}
+                        <a href={img.src} download={`slide-${idx + 1}.png`} style={{ position: 'absolute', bottom: 7, right: 7, width: 26, height: 26, borderRadius: 6, background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', textDecoration: 'none' }}>
                           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                         </a>
                       </div>
@@ -1745,20 +1913,51 @@ export default function InfluencerDetail({ id, onBack, onOpenPipeline, onOpenCar
                                 </svg>
                               </button>
                             </div>
-                            <button
-                              onClick={e => { e.stopPropagation(); togglePosted(ex.id, ex.posted) }}
-                              style={{
-                                alignSelf: 'flex-start', padding: '3px 9px', borderRadius: 20, border: '1px solid',
-                                fontSize: 10, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5,
-                                background: ex.posted ? 'rgba(74,222,128,0.12)' : 'transparent',
-                                borderColor: ex.posted ? '#4ade80' : 'var(--border)',
-                                color: ex.posted ? '#4ade80' : 'var(--text-muted)',
-                                transition: 'all 0.15s',
-                              }}
-                            >
-                              <span style={{ width: 5, height: 5, borderRadius: '50%', background: ex.posted ? '#4ade80' : 'var(--text-muted)', flexShrink: 0 }} />
-                              {ex.posted ? 'Posted' : 'Not posted'}
-                            </button>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                              <button
+                                onClick={e => { e.stopPropagation(); togglePosted(ex.id, ex.posted) }}
+                                style={{
+                                  padding: '3px 9px', borderRadius: 20, border: '1px solid',
+                                  fontSize: 10, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5,
+                                  background: ex.posted ? 'rgba(74,222,128,0.12)' : 'transparent',
+                                  borderColor: ex.posted ? '#4ade80' : 'var(--border)',
+                                  color: ex.posted ? '#4ade80' : 'var(--text-muted)',
+                                  transition: 'all 0.15s',
+                                }}
+                              >
+                                <span style={{ width: 5, height: 5, borderRadius: '50%', background: ex.posted ? '#4ade80' : 'var(--text-muted)', flexShrink: 0 }} />
+                                {ex.posted ? 'Posted' : 'Not posted'}
+                              </button>
+                              {!ex.posted && (
+                                <button
+                                  title="Post to Instagram"
+                                  onClick={e => { e.stopPropagation(); if (cardIgState[ex.id] !== 'posting') postToInstagramCard(ex) }}
+                                  disabled={cardIgState[ex.id] === 'posting'}
+                                  style={{
+                                    padding: '3px 6px', borderRadius: 20, border: '1px solid var(--border)',
+                                    background: 'transparent', cursor: cardIgState[ex.id] === 'posting' ? 'default' : 'pointer',
+                                    display: 'flex', alignItems: 'center', flexShrink: 0,
+                                    color: cardIgState[ex.id]?.startsWith('error:') ? '#f87171' : 'var(--text-muted)',
+                                    transition: 'all 0.15s',
+                                  }}
+                                >
+                                  {cardIgState[ex.id] === 'posting' ? (
+                                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ animation: 'spin 0.8s linear infinite' }}>
+                                      <circle cx="12" cy="12" r="10" strokeDasharray="40 20"/>
+                                    </svg>
+                                  ) : (
+                                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                      <rect x="2" y="2" width="20" height="20" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1" fill="currentColor" stroke="none"/>
+                                    </svg>
+                                  )}
+                                </button>
+                              )}
+                            </div>
+                            {cardIgState[ex.id]?.startsWith('error:') && (
+                              <div style={{ fontSize: 10, color: '#f87171', marginTop: 2, lineHeight: 1.4 }}>
+                                {cardIgState[ex.id].slice(6)}
+                              </div>
+                            )}
                           </div>
                         </div>
                       )
