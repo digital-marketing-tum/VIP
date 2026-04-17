@@ -3,7 +3,7 @@ import { supabase } from '../supabase'
 import { fetchIgProfile, fetchIgMedia } from '../services/instagramGraph'
 
 // ── Palette ──────────────────────────────────────────────────────────────────
-const COLORS = ['#8b5cf6','#3b82f6','#10b981','#f59e0b','#ef4444','#ec4899','#06b6d4','#f97316']
+const COLORS = ['#a78bfa','#60a5fa','#34d399','#fbbf24','#f472b6','#38bdf8','#fb923c','#c084fc']
 
 // ── Shared icons ─────────────────────────────────────────────────────────────
 const IgIcon = ({ size = 16 }) => (
@@ -76,6 +76,76 @@ function BarChart({ items, maxValue, height = 18 }) {
   )
 }
 
+function LineChart({ series, height = 200 }) {
+  if (!series.length) return null
+  const allMonths = [...new Set(series.flatMap(s => s.points.map(p => p.month)))].sort()
+  if (allMonths.length < 2) return (
+    <div style={{ fontSize: 12, color: 'var(--text-muted)', padding: '12px 0' }}>Not enough data to plot a trend.</div>
+  )
+  const allValues = series.flatMap(s => s.points.map(p => p.value))
+  const maxVal = Math.max(...allValues, 1)
+  const W = 600, H = height, PAD_L = 40, PAD_R = 16, PAD_T = 12, PAD_B = 32
+  const innerW = W - PAD_L - PAD_R
+  const innerH = H - PAD_T - PAD_B
+  const xPos = month => PAD_L + (allMonths.indexOf(month) / (allMonths.length - 1)) * innerW
+  const yPos = val => PAD_T + innerH - (val / maxVal) * innerH
+  const gridLines = [0, 0.25, 0.5, 0.75, 1].map(t => ({ y: PAD_T + innerH * (1 - t), val: Math.round(maxVal * t) }))
+  const labelStep = Math.ceil(allMonths.length / 8)
+  const fmtMonth = m => { const [y, mo] = m.split('-'); return `${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][+mo-1]} ${y.slice(2)}` }
+
+  return (
+    <div>
+      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', display: 'block', overflow: 'visible' }}>
+        {/* Grid */}
+        {gridLines.map(gl => (
+          <g key={gl.y}>
+            <line x1={PAD_L} y1={gl.y} x2={W - PAD_R} y2={gl.y} stroke="var(--border)" strokeWidth="1" strokeDasharray="4 3" />
+            <text x={PAD_L - 6} y={gl.y + 4} fill="var(--text-muted)" fontSize="9" textAnchor="end">{gl.val.toLocaleString()}</text>
+          </g>
+        ))}
+        {/* X labels */}
+        {allMonths.map((m, i) => i % labelStep === 0 && (
+          <text key={m} x={xPos(m)} y={H - 4} fill="var(--text-muted)" fontSize="9" textAnchor="middle">{fmtMonth(m)}</text>
+        ))}
+        {/* Lines + dots */}
+        {series.map(s => {
+          const pts = allMonths.map(m => {
+            const pt = s.points.find(p => p.month === m)
+            return pt ? { x: xPos(m), y: yPos(pt.value), v: pt.value } : null
+          })
+          const segments = []
+          let cur = []
+          pts.forEach(p => {
+            if (p) { cur.push(p) }
+            else if (cur.length) { segments.push(cur); cur = [] }
+          })
+          if (cur.length) segments.push(cur)
+          return (
+            <g key={s.id}>
+              {segments.map((seg, si) => seg.length > 1 && (
+                <polyline key={si} points={seg.map(p => `${p.x},${p.y}`).join(' ')}
+                  fill="none" stroke={s.color} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" opacity="0.9" />
+              ))}
+              {pts.filter(Boolean).map((p, pi) => (
+                <circle key={pi} cx={p.x} cy={p.y} r="3" fill={s.color} stroke="var(--surface)" strokeWidth="1.5" />
+              ))}
+            </g>
+          )
+        })}
+      </svg>
+      {/* Legend */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 16px', marginTop: 8 }}>
+        {series.map(s => (
+          <span key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--text-muted)' }}>
+            <span style={{ width: 10, height: 10, borderRadius: '50%', background: s.color, flexShrink: 0 }} />
+            {s.name}
+          </span>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 // ── Dashboard view ────────────────────────────────────────────────────────────
 function Dashboard({ influencers }) {
   const [data, setData] = useState({})  // { [infId]: { profile, media } | 'loading' | 'error:<msg>' }
@@ -105,9 +175,19 @@ function Dashboard({ influencers }) {
       const engRate     = d.profile.followers_count
         ? +((media.reduce((s, p) => s + (p.like_count ?? 0) + (p.comments_count ?? 0), 0) / Math.max(media.length, 1)) / d.profile.followers_count * 100).toFixed(2)
         : 0
-      const postsLast30 = media.filter(p => p.timestamp && new Date(p.timestamp) > new Date(Date.now() - 30 * 864e5)).length
       const topPost     = media.reduce((best, p) => (p.like_count ?? 0) > (best?.like_count ?? -1) ? p : best, null)
-      return { id: inf.id, name: inf.name, color: COLORS[idx % COLORS.length], profile: d.profile, media, avgLikes, avgComments, engRate, postsLast30, topPost }
+      const monthBuckets = {}
+      media.forEach(p => {
+        if (!p.timestamp) return
+        const mo = p.timestamp.slice(0, 7)
+        if (!monthBuckets[mo]) monthBuckets[mo] = { sum: 0, count: 0 }
+        monthBuckets[mo].sum += p.like_count ?? 0
+        monthBuckets[mo].count++
+      })
+      const monthlyPoints = Object.entries(monthBuckets)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([month, { sum, count }]) => ({ month, value: Math.round(sum / count) }))
+      return { id: inf.id, name: inf.name, color: COLORS[idx % COLORS.length], profile: d.profile, media, avgLikes, avgComments, engRate, monthlyPoints, topPost }
     })
     .filter(Boolean)
 
@@ -115,7 +195,6 @@ function Dashboard({ influencers }) {
   const totalFollowers  = ready.reduce((s, r) => s + (r.profile.followers_count ?? 0), 0)
   const totalPosts      = ready.reduce((s, r) => s + r.media.length, 0)
   const bestEngaged     = ready.length ? ready.reduce((a, b) => a.engRate > b.engRate ? a : b) : null
-  const mostActive      = ready.length ? ready.reduce((a, b) => a.postsLast30 > b.postsLast30 ? a : b) : null
 
   return (
     <>
@@ -155,15 +234,6 @@ function Dashboard({ influencers }) {
                 value={bestEngaged.name}
                 icon={<HeartIcon size={13} />}
                 sub={`${bestEngaged.engRate}% eng. rate`}
-                accent="var(--accent)"
-              />
-            )}
-            {mostActive && (
-              <StatCard
-                label="Most active (30d)"
-                value={mostActive.name}
-                icon={<IgIcon size={13} />}
-                sub={`${mostActive.postsLast30} posts`}
                 accent="var(--accent)"
               />
             )}
@@ -226,27 +296,12 @@ function Dashboard({ influencers }) {
             </div>
           </div>
 
-          {/* ── Content velocity (last 30 days) ── */}
-          <SectionTitle>Posts in the last 30 days</SectionTitle>
-          <div className="card" style={{ marginBottom: 20 }}>
-            <div className="card-body">
-              <BarChart
-                items={ready.sort((a, b) => b.postsLast30 - a.postsLast30).map(r => ({
-                  id: r.id, name: r.name, color: r.color, value: r.postsLast30,
-                }))}
-              />
-            </div>
-          </div>
-
-          {/* ── Following comparison ── */}
-          <SectionTitle>Following</SectionTitle>
+          {/* ── Engagement over time ── */}
+          <SectionTitle>Avg likes per post — over time</SectionTitle>
           <div className="card" style={{ marginBottom: 28 }}>
             <div className="card-body">
-              <BarChart
-                items={ready.sort((a, b) => b.profile.follows_count - a.profile.follows_count).map(r => ({
-                  id: r.id, name: r.name, color: r.color,
-                  value: r.profile.follows_count ?? 0,
-                }))}
+              <LineChart
+                series={ready.map(r => ({ id: r.id, name: r.name, color: r.color, points: r.monthlyPoints }))}
               />
             </div>
           </div>
