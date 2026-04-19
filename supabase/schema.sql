@@ -52,6 +52,7 @@ CREATE TABLE IF NOT EXISTS public.carousel_pipelines (
   p2_prompt       jsonb,
   p4_prompt       jsonb,
   hashtag_count   integer DEFAULT 20,
+  image_model     text NOT NULL DEFAULT 'gemini-3.1-flash-image-preview',
   created_at      timestamptz NOT NULL DEFAULT now(),
   updated_at      timestamptz NOT NULL DEFAULT now()
 );

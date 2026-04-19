@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { Store } from '../store'
 import { supabase } from '../supabase'
 import { uploadImage } from '../storage'
-import { ideateCarousel, generateSlidePrompts, generateTopicList, generateSlideImage, generateCaption, buildIdeationPrompt, buildSlidePromptsPrompt, buildTopicListPrompt, buildCaptionPrompt } from '../services/generator'
+import { ideateCarousel, generateSlidePrompts, generateTopicList, generateSlideImage, generateCaption, buildIdeationPrompt, buildSlidePromptsPrompt, buildTopicListPrompt, buildCaptionPrompt, IMAGE_MODELS, DEFAULT_IMAGE_MODEL } from '../services/generator'
 
 // ── Supabase mappers ──────────────────────────────────────────────────────────
 function fromDbPip(row) {
@@ -19,6 +19,7 @@ function fromDbPip(row) {
     p2Prompt:      row.p2_prompt,
     p4Prompt:      row.p4_prompt,
     hashtagCount:  row.hashtag_count || 5,
+    imageModel:    row.image_model || DEFAULT_IMAGE_MODEL,
     createdAt:     row.created_at,
     updatedAt:     row.updated_at,
   }
@@ -37,6 +38,7 @@ function toDbPip(pip) {
     p2_prompt:      pip.p2Prompt ?? null,
     p4_prompt:      pip.p4Prompt ?? null,
     hashtag_count:  pip.hashtagCount || 5,
+    image_model:    pip.imageModel || DEFAULT_IMAGE_MODEL,
     updated_at:     new Date().toISOString(),
   }
 }
@@ -283,6 +285,31 @@ function RatioPicker({ value, onChange }) {
         >
           <div style={{ fontSize: 12, fontWeight: 700, lineHeight: 1 }}>{o.label}</div>
           <div style={{ fontSize: 10, opacity: 0.7, marginTop: 2 }}>{o.sub}</div>
+        </button>
+      ))}
+    </div>
+  )
+}
+
+// ── Model Picker ──────────────────────────────────────────────────────────────
+function ModelPicker({ value, onChange }) {
+  return (
+    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+      {IMAGE_MODELS.map(m => (
+        <button
+          key={m.id}
+          onClick={() => onChange(m.id)}
+          style={{
+            padding: '6px 12px', borderRadius: 8, border: '1px solid',
+            background: value === m.id ? 'var(--text)' : 'var(--surface)',
+            borderColor: value === m.id ? 'var(--text)' : 'var(--border)',
+            color: value === m.id ? 'white' : 'var(--text-mid)',
+            cursor: 'pointer', transition: 'all 0.12s', textAlign: 'center',
+            fontFamily: 'inherit',
+          }}
+        >
+          <div style={{ fontSize: 12, fontWeight: 700, lineHeight: 1 }}>{m.label}</div>
+          <div style={{ fontSize: 10, opacity: 0.7, marginTop: 2 }}>{m.sub}</div>
         </button>
       ))}
     </div>
@@ -801,6 +828,7 @@ function EditorView({ pip, inf, geminiKey, onUpdate, onBack }) {
   const [slideImages, setSlideImages] = useState([])
   const [p3Status, setP3Status]       = useState('idle')
   const [p3Error, setP3Error]         = useState('')
+  const [imageModel, setImageModel]   = useState(pip.imageModel || DEFAULT_IMAGE_MODEL)
 
   // Phase 4 — caption + hashtags, always fresh
   const [p4Status, setP4Status]       = useState('idle')
@@ -853,6 +881,7 @@ function EditorView({ pip, inf, geminiKey, onUpdate, onBack }) {
       p2Prompt,
       hashtagCount,
       p4Prompt,
+      imageModel,
     })
     setIsDirty(false)
   }
@@ -938,7 +967,7 @@ function EditorView({ pip, inf, geminiKey, onUpdate, onBack }) {
       }
       const idx = final.findIndex(img => img.position === slide.position)
       try {
-        const base64 = await generateSlideImage(geminiKey, slide.prompt, refImages, aspectRatio)
+        const base64 = await generateSlideImage(geminiKey, slide.prompt, refImages, aspectRatio, imageModel)
         const src = await uploadImage(base64, 'carousel-images', `${storageFolder}/slide-${slide.position}`)
         final[idx] = { ...final[idx], src, status: 'done' }
       } catch (err) {
@@ -991,7 +1020,7 @@ function EditorView({ pip, inf, geminiKey, onUpdate, onBack }) {
       img.position === slide.position ? { ...img, status: 'loading', error: null } : img
     ))
     try {
-      const base64 = await generateSlideImage(geminiKey, slide.prompt, refImages, aspectRatio)
+      const base64 = await generateSlideImage(geminiKey, slide.prompt, refImages, aspectRatio, imageModel)
       // Upload — reuse the same execKey so it overwrites the existing file
       const { data: { user } } = await supabase.auth.getUser()
       const execKey = execKeyRef.current || genId()
@@ -1410,6 +1439,12 @@ function EditorView({ pip, inf, geminiKey, onUpdate, onBack }) {
                   No reference images uploaded for this influencer. Add them in the Influencer tab for better results.
                 </div>
               )}
+
+              {/* Model picker */}
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text)', marginBottom: 7 }}>Model</div>
+                <ModelPicker value={imageModel} onChange={v => { setImageModel(v); save({ imageModel: v }) }} />
+              </div>
 
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <button

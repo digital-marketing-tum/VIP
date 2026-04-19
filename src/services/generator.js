@@ -59,12 +59,32 @@ export function buildSlidePromptsPrompt(inf, idea, slideCount, aspectRatio) {
   }
 }
 
+// ── Image generation models (Google Nano Banana family) ──────────────────────
+// Source: https://ai.google.dev/gemini-api/docs/image-generation
+export const IMAGE_MODELS = [
+  {
+    id:    'gemini-2.5-flash-image',
+    label: 'Nano Banana',
+    sub:   'Fast · low-latency',
+  },
+  {
+    id:    'gemini-3.1-flash-image-preview',
+    label: 'Nano Banana 2',
+    sub:   'Balanced · high volume',
+  },
+  {
+    id:    'gemini-3-pro-image-preview',
+    label: 'Nano Banana Pro',
+    sub:   'Pro · advanced reasoning',
+  },
+]
+export const DEFAULT_IMAGE_MODEL = 'gemini-3.1-flash-image-preview'
+
 // ── Generate a single slide image with optional reference images ──────────────
-export async function generateSlideImage(apiKey, prompt, refImages = [], aspectRatio = '4:5') {
+export async function generateSlideImage(apiKey, prompt, refImages = [], aspectRatio = '4:5', model = DEFAULT_IMAGE_MODEL) {
   if (!apiKey || !apiKey.startsWith('AIza')) {
     throw new Error('Invalid Gemini API key. Go to Settings.')
   }
-  const model = 'gemini-3.1-flash-image-preview'
   const url   = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
 
   const parts = []
