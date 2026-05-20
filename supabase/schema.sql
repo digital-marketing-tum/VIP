@@ -30,11 +30,14 @@ CREATE TABLE IF NOT EXISTS public.influencers (
 );
 
 CREATE TABLE IF NOT EXISTS public.api_keys (
-  user_id         uuid PRIMARY KEY REFERENCES auth.users(id),
-  gemini_key      text DEFAULT '',
-  rapid_key       text,
+  user_id          uuid PRIMARY KEY REFERENCES auth.users(id),
+  gemini_key       text DEFAULT '',
+  rapid_key        text,
   google_client_id text,
-  updated_at      timestamptz DEFAULT now()
+  ig_access_token  text DEFAULT '',
+  meta_app_id      text DEFAULT '',
+  ig_user_id       text DEFAULT '',
+  updated_at       timestamptz DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS public.carousel_pipelines (

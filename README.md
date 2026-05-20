@@ -45,6 +45,8 @@ npm run dev
 After logging in, go to **Settings** and enter your own:
 - **Gemini API key** — from [aistudio.google.com](https://aistudio.google.com) (free tier available)
 - **RapidAPI key** — subscribe to *Instagram Looter 2* on RapidAPI for analytics (free tier available)
+- **Meta App ID** — from [developers.facebook.com](https://developers.facebook.com) → your Meta app → Instagram → API setup (required for publishing posts via Instagram Graph API)
+- **Instagram Access Token** — long-lived user access token from the same Meta developer console (required for publishing posts)
 
 These are stored in your own Supabase, never shared.
 
