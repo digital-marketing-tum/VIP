@@ -54,7 +54,7 @@ export function buildIdeationPrompt(inf) {
   const persona = buildPersonaContext(inf)
   return {
     system: `You are a creative content strategist for this Instagram creator:\n\n${persona}\n\nAlways think from their brand's unique perspective and audience.`,
-    user: `Generate ONE Instagram carousel post idea for this creator.\nBe specific and unexpected — avoid generic tropes like travel diaries, hidden gems, day trips, or "photo dump" formats.\nPush for a fresh angle: a niche obsession, a counterintuitive take, a highly specific moment, or something that would make their audience stop scrolling.\n\nReturn ONLY valid JSON (no markdown, no explanation outside the JSON):\n{\n  "topic": "the main topic in one clear, specific sentence"\n}`,
+    user: `Generate ONE Instagram carousel post idea for this creator.\nBe specific — a real place, a concrete experience, a particular moment. Avoid vague or generic phrasing.\n\nReturn ONLY valid JSON (no markdown, no explanation outside the JSON):\n{\n  "topic": "the main topic in one clear, specific sentence"\n}`,
   }
 }
 
