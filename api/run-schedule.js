@@ -218,41 +218,50 @@ export default async function handler(req, res) {
     process.env.SUPABASE_SERVICE_ROLE_KEY,
   )
 
-  // Determine current Berlin time → day_key + HH:MM
+  // Current Berlin datetime as "YYYY-MM-DDTHH:MM" for text comparison
   const now   = new Date()
-  const parts = new Intl.DateTimeFormat('en-GB', {
+  const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Europe/Berlin',
-    weekday:  'short',
+    year:     'numeric',
+    month:    '2-digit',
+    day:      '2-digit',
     hour:     '2-digit',
     minute:   '2-digit',
     hour12:   false,
   }).formatToParts(now)
 
-  const DAY_MAP = { Mon: 'mon', Tue: 'tue', Wed: 'wed', Thu: 'thu', Fri: 'fri', Sat: 'sat', Sun: 'sun' }
-  const dayKey = DAY_MAP[parts.find(p => p.type === 'weekday').value]
-  const hh     = parts.find(p => p.type === 'hour').value.padStart(2, '0')
-  const mm     = parts.find(p => p.type === 'minute').value.padStart(2, '0')
-  const currentTime = `${hh}:${mm}`
+  const berlinDatetime = [
+    parts.find(p => p.type === 'year').value,
+    '-',
+    parts.find(p => p.type === 'month').value,
+    '-',
+    parts.find(p => p.type === 'day').value,
+    'T',
+    parts.find(p => p.type === 'hour').value.padStart(2, '0'),
+    ':',
+    parts.find(p => p.type === 'minute').value.padStart(2, '0'),
+  ].join('')
 
-  // Find slots due right now
+  // Find all slots due now or overdue (not yet processed — they get deleted after running)
   const { data: slots, error: slotErr } = await supabase
     .from('schedule_slots')
     .select('*')
-    .eq('day_key', dayKey)
-    .eq('time', currentTime)
+    .lte('scheduled_at', berlinDatetime)
 
   if (slotErr) return res.status(500).json({ error: slotErr.message })
   if (!slots?.length) {
-    return res.status(200).json({ skipped: true, time: currentTime, day: dayKey })
+    return res.status(200).json({ skipped: true, berlin: berlinDatetime })
   }
 
   // Respond immediately so cron-job.org gets its response within the 30s timeout.
   // Vercel keeps the function running up to maxDuration (300s) after the response.
-  res.status(202).json({ started: true, slots: slots.length, time: currentTime, day: dayKey })
+  res.status(202).json({ started: true, slots: slots.length, berlin: berlinDatetime })
 
-  // Run each due slot in the background — errors are isolated so one failure doesn't block others
+  // Run each due slot in the background — delete after processing so it only fires once
   for (const slot of slots) {
     try {
+      // Delete first to prevent double-fire if function retries
+      await supabase.from('schedule_slots').delete().eq('id', slot.id)
       if (slot.pip_format === 'carousel' && slot.pip_id) {
         await runCarouselPipeline(supabase, slot)
       }

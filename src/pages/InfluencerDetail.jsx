@@ -263,11 +263,6 @@ const DAYS = [
   { key: 'sat', label: 'Sat', full: 'Saturday' },
   { key: 'sun', label: 'Sun', full: 'Sunday' },
 ]
-// backward compat: old slots stored 'morning'|'noon'|'evening'
-const LEGACY_TIME = { morning: '09:00', noon: '12:00', evening: '18:00' }
-const EMPTY_SCHEDULE = { mon:[], tue:[], wed:[], thu:[], fri:[], sat:[], sun:[] }
-
-function normalizeTime(t) { return LEGACY_TIME[t] ?? t }
 
 // ── SlotCard ──────────────────────────────────────────────────────────────────
 function SlotCard({ slot, onRemove, onNavigate }) {
@@ -317,7 +312,7 @@ function SlotCard({ slot, onRemove, onNavigate }) {
           }
         </div>
         <span style={{ fontSize: 10, fontWeight: 700, color: iconColor, letterSpacing: '0.02em' }}>
-          {normalizeTime(slot.time)}
+          {slot.scheduledAt?.slice(11, 16)}
         </span>
       </div>
     </div>
@@ -325,14 +320,16 @@ function SlotCard({ slot, onRemove, onNavigate }) {
 }
 
 // ── AddSlotModal ──────────────────────────────────────────────────────────────
-function AddSlotModal({ dayFull, allPipelines, onClose, onConfirm }) {
+function AddSlotModal({ date, allPipelines, onClose, onConfirm }) {
   const [selKey, setSelKey] = useState(allPipelines[0]?.key || null)
   const [time, setTime]     = useState('09:00')
+
+  const dateLabel = date ? new Date(date + 'T12:00').toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' }) : ''
 
   function handleConfirm() {
     const pip = allPipelines.find(p => p.key === selKey)
     if (!pip) return
-    onConfirm({ pipName: pip.name, pipFormat: pip.format, pipId: pip.id ?? null, time })
+    onConfirm({ pipName: pip.name, pipFormat: pip.format, pipId: pip.id ?? null, scheduledAt: `${date}T${time}` })
   }
 
   return (
@@ -341,7 +338,7 @@ function AddSlotModal({ dayFull, allPipelines, onClose, onConfirm }) {
         <div style={{ padding: '18px 20px 14px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
           <div>
             <div style={{ fontSize: 14, fontWeight: 600, letterSpacing: '-0.2px' }}>Schedule Post</div>
-            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>{dayFull}</div>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>{dateLabel}</div>
           </div>
           <button className="close-btn" onClick={onClose}>✕</button>
         </div>
@@ -419,7 +416,7 @@ function AddSlotModal({ dayFull, allPipelines, onClose, onConfirm }) {
 
 // ── ScheduleTab ───────────────────────────────────────────────────────────────
 function ScheduleTab({ schedule, pipelines, workflows, carouselPips, onAddSlot, onRemoveSlot, onOpenCarousel, onOpenPipeline }) {
-  const [addingDay, setAddingDay]   = useState(null)
+  const [addingDate, setAddingDate] = useState(null)
   const [hoveredDay, setHoveredDay] = useState(null)
 
   const allPipelines = [
@@ -446,15 +443,16 @@ function ScheduleTab({ schedule, pipelines, workflows, carouselPips, onAddSlot, 
     return d
   })
 
+  function toDateStr(date) {
+    return date.toLocaleDateString('en-CA') // YYYY-MM-DD
+  }
+
   function isToday(date) {
     const t = new Date()
     return date.getDate() === t.getDate() && date.getMonth() === t.getMonth() && date.getFullYear() === t.getFullYear()
   }
 
-  function addSlot(dayKey, slotData)    { onAddSlot(dayKey, slotData) }
-  function removeSlot(dayKey, slotId)   { onRemoveSlot(dayKey, slotId) }
-
-  const totalSlots = DAYS.reduce((n, d) => n + (schedule[d.key]?.length || 0), 0)
+  const totalSlots = weekDates.reduce((n, d) => n + schedule.filter(s => s.scheduledAt?.startsWith(toDateStr(d))).length, 0)
 
   return (
     <>
@@ -510,14 +508,15 @@ function ScheduleTab({ schedule, pipelines, workflows, carouselPips, onAddSlot, 
         {/* Day columns body */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', alignItems: 'start' }}>
           {DAYS.map((day, i) => {
-            const slots  = [...(schedule[day.key] || [])].sort((a, b) => normalizeTime(a.time).localeCompare(normalizeTime(b.time)))
-            const active = isToday(weekDates[i])
-            const isHov  = hoveredDay === day.key
+            const dateStr = toDateStr(weekDates[i])
+            const slots   = schedule.filter(s => s.scheduledAt?.startsWith(dateStr)).sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt))
+            const active  = isToday(weekDates[i])
+            const isHov   = hoveredDay === day.key
 
             return (
               <div
                 key={day.key}
-                onClick={() => setAddingDay(day.key)}
+                onClick={() => setAddingDate(dateStr)}
                 onMouseEnter={() => setHoveredDay(day.key)}
                 onMouseLeave={() => setHoveredDay(null)}
                 style={{
@@ -530,7 +529,7 @@ function ScheduleTab({ schedule, pipelines, workflows, carouselPips, onAddSlot, 
                 }}
               >
                 {slots.map(slot => (
-                  <SlotCard key={slot.id} slot={slot} onRemove={() => removeSlot(day.key, slot.id)} onNavigate={getNavigate(slot)} />
+                  <SlotCard key={slot.id} slot={slot} onRemove={() => onRemoveSlot(slot.id)} onNavigate={getNavigate(slot)} />
                 ))}
 
                 {/* Ghost add — only on hover, always at bottom */}
@@ -556,12 +555,12 @@ function ScheduleTab({ schedule, pipelines, workflows, carouselPips, onAddSlot, 
         </div>
       </div>
 
-      {addingDay && (
+      {addingDate && (
         <AddSlotModal
-          dayFull={DAYS.find(d => d.key === addingDay)?.full}
+          date={addingDate}
           allPipelines={allPipelines}
-          onClose={() => setAddingDay(null)}
-          onConfirm={slotData => { addSlot(addingDay, slotData); setAddingDay(null) }}
+          onClose={() => setAddingDate(null)}
+          onConfirm={slotData => { onAddSlot(slotData.scheduledAt, slotData); setAddingDate(null) }}
         />
       )}
     </>
@@ -807,7 +806,7 @@ export default function InfluencerDetail({ id, onBack, onOpenPipeline, onOpenCar
   const [creatingVideo, setCreatingVideo]       = useState(false)
   const [images, setImages]         = useState([])
   const [executions, setExecutions]   = useState([])
-  const [schedule, setSchedule]       = useState(EMPTY_SCHEDULE)
+  const [schedule, setSchedule]       = useState([])
   const [selectedPost, setSelectedPost] = useState(null)
   const [datePreset,   setDatePreset]   = useState('all')
   const [postedFilter, setPostedFilter] = useState('all')  // 'all' | 'posted' | 'not-posted'
@@ -844,11 +843,7 @@ export default function InfluencerDetail({ id, onBack, onOpenPipeline, onOpenCar
       .eq('influencer_id', id)
       .then(({ data }) => {
         if (!data?.length) return
-        const rebuilt = { mon:[], tue:[], wed:[], thu:[], fri:[], sat:[], sun:[] }
-        for (const row of data) {
-          rebuilt[row.day_key]?.push({ id: row.id, pipName: row.pip_name, pipFormat: row.pip_format, pipId: row.pip_id, time: row.time })
-        }
-        setSchedule(rebuilt)
+        setSchedule(data.map(row => ({ id: row.id, pipName: row.pip_name, pipFormat: row.pip_format, pipId: row.pip_id, scheduledAt: row.scheduled_at })))
       })
     supabase.from('workflows').select('id, name, nodes, updated_at')
       .eq('influencer_id', id).order('created_at').then(({ data }) => setWorkflows(data || []))
@@ -997,25 +992,24 @@ export default function InfluencerDetail({ id, onBack, onOpenPipeline, onOpenCar
     await supabase.from('carousel_executions').update({ title }).eq('id', exId)
   }
 
-  async function handleAddSlot(dayKey, slotData) {
+  async function handleAddSlot(scheduledAt, slotData) {
     const slotId = Math.random().toString(36).slice(2, 9)
-    const slot = { id: slotId, pipName: slotData.pipName, pipFormat: slotData.pipFormat, pipId: slotData.pipId ?? null, time: slotData.time }
-    setSchedule(prev => ({ ...prev, [dayKey]: [...(prev[dayKey] || []), slot] }))
+    const slot = { id: slotId, pipName: slotData.pipName, pipFormat: slotData.pipFormat, pipId: slotData.pipId ?? null, scheduledAt }
+    setSchedule(prev => [...prev, slot])
     const { data: { user } } = await supabase.auth.getUser()
     await supabase.from('schedule_slots').insert({
       id:            slotId,
       influencer_id: id,
       user_id:       user.id,
-      day_key:       dayKey,
+      scheduled_at:  scheduledAt,
       pip_name:      slotData.pipName,
       pip_format:    slotData.pipFormat,
       pip_id:        slotData.pipId ?? null,
-      time:          slotData.time,
     })
   }
 
-  async function handleRemoveSlot(dayKey, slotId) {
-    setSchedule(prev => ({ ...prev, [dayKey]: (prev[dayKey] || []).filter(s => s.id !== slotId) }))
+  async function handleRemoveSlot(slotId) {
+    setSchedule(prev => prev.filter(s => s.id !== slotId))
     await supabase.from('schedule_slots').delete().eq('id', slotId)
   }
 

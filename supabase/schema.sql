@@ -109,11 +109,10 @@ CREATE TABLE IF NOT EXISTS public.schedule_slots (
   id              text PRIMARY KEY,
   influencer_id   text NOT NULL REFERENCES public.influencers(id),
   user_id         uuid NOT NULL REFERENCES auth.users(id),
-  day_key         text NOT NULL CHECK (day_key = ANY (ARRAY['mon','tue','wed','thu','fri','sat','sun'])),
+  scheduled_at    text NOT NULL,  -- Berlin local time: "YYYY-MM-DDTHH:MM"
   pip_name        text NOT NULL,
   pip_format      text NOT NULL,
   pip_id          text,
-  time            text NOT NULL,
   created_at      timestamptz NOT NULL DEFAULT now()
 );
 
