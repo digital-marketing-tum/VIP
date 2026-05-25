@@ -291,7 +291,6 @@ export default async function handler(req, res) {
   }
 
   console.log(`[run-schedule] Found ${slots.length} pending slot(s)`)
-  res.status(202).json({ started: true, slots: slots.length, berlin: berlinDatetime })
 
   for (const slot of slots) {
     console.log(`[run-schedule] Processing slot ${slot.id} (${slot.pip_format})`)
@@ -313,4 +312,5 @@ export default async function handler(req, res) {
   }
 
   console.log('[run-schedule] All slots processed')
+  res.status(200).json({ done: true, slots: slots.length, berlin: berlinDatetime })
 }
