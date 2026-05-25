@@ -25,7 +25,7 @@ export function buildPersonaContext(inf) {
 }
 
 // ── Base Gemini text call ─────────────────────────────────────────────────────
-export async function geminiText(apiKey, { system, user, model = 'gemini-2.0-flash' }) {
+export async function geminiText(apiKey, { system, user, model = 'gemini-2.0-flash', temperature }) {
   if (!apiKey || apiKey.length < 10 || !apiKey.startsWith('AIza')) {
     throw new Error('Invalid Gemini API key. Go to Settings and enter your key from aistudio.google.com (starts with AIza…).')
   }
@@ -34,6 +34,9 @@ export async function geminiText(apiKey, { system, user, model = 'gemini-2.0-fla
   const body = { contents: [{ parts: [{ text: user }] }] }
   if (system?.trim()) {
     body.systemInstruction = { parts: [{ text: system }] }
+  }
+  if (temperature !== undefined) {
+    body.generationConfig = { temperature }
   }
   const res  = await fetch(url, {
     method:  'POST',
@@ -51,7 +54,7 @@ export function buildIdeationPrompt(inf) {
   const persona = buildPersonaContext(inf)
   return {
     system: `You are a creative content strategist for this Instagram creator:\n\n${persona}\n\nAlways think from their brand's unique perspective and audience.`,
-    user: `Generate ONE compelling Instagram carousel post idea for this creator.\nIt should feel authentic to their niche and be highly shareable.\n\nReturn ONLY valid JSON (no markdown, no explanation outside the JSON):\n{\n  "topic": "the main topic in one clear, specific sentence"\n}`,
+    user: `Generate ONE Instagram carousel post idea for this creator.\nBe specific and unexpected — avoid generic tropes like travel diaries, hidden gems, day trips, or "photo dump" formats.\nPush for a fresh angle: a niche obsession, a counterintuitive take, a highly specific moment, or something that would make their audience stop scrolling.\n\nReturn ONLY valid JSON (no markdown, no explanation outside the JSON):\n{\n  "topic": "the main topic in one clear, specific sentence"\n}`,
   }
 }
 
@@ -223,7 +226,7 @@ export async function ideateCarousel(apiKey, inf, customPrompt) {
   const defaults = buildIdeationPrompt(inf)
   const system   = customPrompt?.system ?? defaults.system
   const user     = customPrompt?.user   ?? defaults.user
-  const raw = await geminiText(apiKey, { system, user })
+  const raw = await geminiText(apiKey, { system, user, temperature: 1.5 })
   return extractJSON(raw)
 }
 
