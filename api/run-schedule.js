@@ -216,9 +216,10 @@ async function runCarouselPipeline(supabase, slot) {
   if (insertErr) throw new Error(`Failed to save execution: ${insertErr.message}`)
   log(`Execution saved — id=${execId}`)
 
-  // Instagram post
-  const igToken  = keys.ig_access_token
-  const igUserId = keys.ig_user_id
+  // Instagram post — token lives on influencer.accounts, not api_keys
+  const igAccount = (infRow.accounts || []).find(a => a.platform === 'ig')
+  const igToken   = igAccount?.ig_access_token
+  const igUserId  = igAccount?.ig_user_id
 
   if (igToken && igUserId && images.length >= 2) {
     log('Posting to Instagram…')
