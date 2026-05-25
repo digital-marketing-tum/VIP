@@ -265,6 +265,13 @@ const DAYS = [
 ]
 
 // ── SlotCard ──────────────────────────────────────────────────────────────────
+const STATUS_DOT = {
+  pending: null,
+  running: { color: '#f59e0b', label: 'Running…' },
+  done:    { color: '#22c55e', label: 'Done' },
+  error:   { color: '#ef4444', label: null }, // label comes from errorMessage
+}
+
 function SlotCard({ slot, onRemove, onNavigate }) {
   const [hovered, setHovered] = useState(false)
 
@@ -273,14 +280,17 @@ function SlotCard({ slot, onRemove, onNavigate }) {
   const iconColor  = isCarousel ? 'var(--purple)' : isWorkflow ? 'var(--text-mid)' : 'var(--blue)'
   const bg         = isCarousel ? 'var(--purple-bg)' : isWorkflow ? 'var(--surface2)' : 'var(--blue-bg)'
   const border     = isCarousel ? 'rgba(124,58,237,0.18)' : isWorkflow ? 'var(--border)' : 'rgba(0,113,227,0.18)'
-  const canNav     = !!onNavigate
+  const canNav     = !!onNavigate && slot.status === 'pending'
+  const dotInfo    = STATUS_DOT[slot.status] || null
+  const tooltip    = slot.status === 'error' ? (slot.errorMessage || 'Pipeline error') : dotInfo?.label
 
   return (
     <div
-      onClick={e => { e.stopPropagation(); onNavigate?.() }}
+      onClick={e => { e.stopPropagation(); if (canNav) onNavigate?.() }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      style={{ position: 'relative', background: bg, border: `1px solid ${hovered && canNav ? iconColor : border}`, borderRadius: 9, padding: '8px 10px', transition: 'box-shadow 0.12s, border-color 0.12s', boxShadow: hovered ? '0 2px 8px rgba(0,0,0,0.08)' : 'none', cursor: canNav ? 'pointer' : 'default' }}
+      style={{ position: 'relative', background: bg, border: `1px solid ${hovered && canNav ? iconColor : border}`, borderRadius: 9, padding: '8px 10px', transition: 'box-shadow 0.12s, border-color 0.12s', boxShadow: hovered ? '0 2px 8px rgba(0,0,0,0.08)' : 'none', cursor: canNav ? 'pointer' : 'default', opacity: slot.status === 'done' ? 0.6 : 1 }}
+      title={tooltip || undefined}
     >
       <button
         onClick={e => { e.stopPropagation(); onRemove() }}
@@ -314,6 +324,9 @@ function SlotCard({ slot, onRemove, onNavigate }) {
         <span style={{ fontSize: 10, fontWeight: 700, color: iconColor, letterSpacing: '0.02em' }}>
           {slot.scheduledAt?.slice(11, 16)}
         </span>
+        {dotInfo && (
+          <span style={{ width: 6, height: 6, borderRadius: '50%', background: dotInfo.color, flexShrink: 0, marginLeft: 'auto' }} />
+        )}
       </div>
     </div>
   )
@@ -843,7 +856,7 @@ export default function InfluencerDetail({ id, onBack, onOpenPipeline, onOpenCar
       .eq('influencer_id', id)
       .then(({ data }) => {
         if (!data?.length) return
-        setSchedule(data.map(row => ({ id: row.id, pipName: row.pip_name, pipFormat: row.pip_format, pipId: row.pip_id, scheduledAt: row.scheduled_at })))
+        setSchedule(data.map(row => ({ id: row.id, pipName: row.pip_name, pipFormat: row.pip_format, pipId: row.pip_id, scheduledAt: row.scheduled_at, status: row.status || 'pending', errorMessage: row.error_message || null })))
       })
     supabase.from('workflows').select('id, name, nodes, updated_at')
       .eq('influencer_id', id).order('created_at').then(({ data }) => setWorkflows(data || []))

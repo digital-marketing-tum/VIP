@@ -242,11 +242,12 @@ export default async function handler(req, res) {
     parts.find(p => p.type === 'minute').value.padStart(2, '0'),
   ].join('')
 
-  // Find all slots due now or overdue (not yet processed — they get deleted after running)
+  // Find all pending slots due now or overdue
   const { data: slots, error: slotErr } = await supabase
     .from('schedule_slots')
     .select('*')
     .lte('scheduled_at', berlinDatetime)
+    .eq('status', 'pending')
 
   if (slotErr) return res.status(500).json({ error: slotErr.message })
   if (!slots?.length) {
@@ -257,16 +258,20 @@ export default async function handler(req, res) {
   // Vercel keeps the function running up to maxDuration (300s) after the response.
   res.status(202).json({ started: true, slots: slots.length, berlin: berlinDatetime })
 
-  // Run each due slot in the background — delete after processing so it only fires once
+  // Run each due slot in the background — mark status so it fires only once
   for (const slot of slots) {
     try {
-      // Delete first to prevent double-fire if function retries
-      await supabase.from('schedule_slots').delete().eq('id', slot.id)
+      await supabase.from('schedule_slots').update({ status: 'running' }).eq('id', slot.id)
       if (slot.pip_format === 'carousel' && slot.pip_id) {
         await runCarouselPipeline(supabase, slot)
       }
+      await supabase.from('schedule_slots').update({ status: 'done' }).eq('id', slot.id)
     } catch (err) {
       console.error(`Schedule slot ${slot.id} failed:`, err)
+      await supabase.from('schedule_slots').update({
+        status: 'error',
+        error_message: err.message?.slice(0, 500) || 'Unknown error',
+      }).eq('id', slot.id)
     }
   }
 

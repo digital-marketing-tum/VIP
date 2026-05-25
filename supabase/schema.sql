@@ -113,6 +113,8 @@ CREATE TABLE IF NOT EXISTS public.schedule_slots (
   pip_name        text NOT NULL,
   pip_format      text NOT NULL,
   pip_id          text,
+  status          text NOT NULL DEFAULT 'pending', -- pending | running | done | error
+  error_message   text,
   created_at      timestamptz NOT NULL DEFAULT now()
 );
 
