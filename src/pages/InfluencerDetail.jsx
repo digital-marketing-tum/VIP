@@ -300,11 +300,15 @@ function SlotLogsModal({ slot, onClose }) {
                 {slot.status === 'pending' ? 'Not started yet.' : 'No logs available yet.'}
               </div>
             : <div style={{ fontFamily: 'monospace', fontSize: 11, lineHeight: 1.7, background: 'var(--surface2)', borderRadius: 8, padding: '10px 12px', maxHeight: 340, overflowY: 'auto' }}>
-                {lines.map((line, i) => (
-                  <div key={i} style={{ color: line.includes('failed') || line.includes('Failed') || line.includes('error') ? '#ef4444' : line.includes('done') || line.includes('complete') || line.includes('successful') ? '#22c55e' : 'var(--text)' }}>
-                    {line}
-                  </div>
-                ))}
+                {lines.map((line, i) => {
+                  const lower = line.toLowerCase()
+                  const color = lower.includes('failed') || lower.includes('skipped')
+                    ? '#ef4444'
+                    : lower.includes(' done') || lower.includes('complete') || lower.includes('successful')
+                    ? '#22c55e'
+                    : 'var(--text)'
+                  return <div key={i} style={{ color }}>{line}</div>
+                })}
               </div>
           }
         </div>
@@ -322,14 +326,13 @@ function SlotCard({ slot, onRemove, onNavigate }) {
   const iconColor  = isCarousel ? 'var(--purple)' : isWorkflow ? 'var(--text-mid)' : 'var(--blue)'
   const bg         = isCarousel ? 'var(--purple-bg)' : isWorkflow ? 'var(--surface2)' : 'var(--blue-bg)'
   const border     = isCarousel ? 'rgba(124,58,237,0.18)' : isWorkflow ? 'var(--border)' : 'rgba(0,113,227,0.18)'
-  const meta       = STATUS_META[slot.status] || STATUS_META.pending
-  const canNav     = !!onNavigate && slot.status === 'pending'
-  const hasLogs    = slot.status !== 'pending'
+  const meta   = STATUS_META[slot.status] || STATUS_META.pending
+  const isPending = slot.status === 'pending'
 
   function handleClick(e) {
     e.stopPropagation()
-    if (hasLogs) setShowLogs(true)
-    else if (canNav) onNavigate?.()
+    if (!isPending) setShowLogs(true)
+    else onNavigate?.()
   }
 
   return (
@@ -338,7 +341,7 @@ function SlotCard({ slot, onRemove, onNavigate }) {
         onClick={handleClick}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
-        style={{ position: 'relative', background: bg, border: `1px solid ${hovered ? iconColor : border}`, borderRadius: 9, padding: '8px 10px', transition: 'box-shadow 0.12s, border-color 0.12s', boxShadow: hovered ? '0 2px 8px rgba(0,0,0,0.08)' : 'none', cursor: 'pointer', opacity: slot.status === 'done' ? 0.65 : 1 }}
+        style={{ position: 'relative', background: bg, border: `1px solid ${hovered ? iconColor : border}`, borderRadius: 9, padding: '8px 10px', transition: 'box-shadow 0.12s, border-color 0.12s', boxShadow: hovered ? '0 2px 8px rgba(0,0,0,0.08)' : 'none', cursor: 'pointer', opacity: isPending ? 1 : 0.65 }}
       >
         <button
           onClick={e => { e.stopPropagation(); onRemove() }}

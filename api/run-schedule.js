@@ -7,6 +7,7 @@ import {
   buildSlidePromptsPrompt,
   buildCaptionPrompt,
 } from '../lib/gemini.js'
+import { genId } from '../lib/utils.js'
 
 export const config = { maxDuration: 300 }
 
@@ -102,12 +103,8 @@ function mapInfluencer(row) {
   }
 }
 
-function genId() {
-  return Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
-}
-
 function ts() {
-  return new Date().toISOString().slice(11, 19) // HH:MM:SS
+  return new Date().toISOString().slice(11, 19)
 }
 
 // ── Full carousel pipeline ────────────────────────────────────────────────────
@@ -124,25 +121,18 @@ async function runCarouselPipeline(supabase, slot) {
   log(`Starting carousel pipeline — pip_id=${slot.pip_id}`)
   await flushLogs()
 
-  // Load pipeline
   const { data: pip, error: pipErr } = await supabase
     .from('carousel_pipelines').select('*').eq('id', slot.pip_id).single()
   if (pipErr || !pip) throw new Error(`Pipeline ${slot.pip_id} not found — ${pipErr?.message || 'not found'}`)
   log(`Pipeline: "${pip.name}" (${pip.slide_count} slides, ${pip.aspect_ratio}, model=${pip.image_model})`)
-  await flushLogs()
 
-  // Load influencer
-  const { data: infRow, error: infErr } = await supabase
-    .from('influencers').select('*').eq('id', pip.influencer_id).single()
+  const [{ data: infRow, error: infErr }, { data: keys, error: keysErr }] = await Promise.all([
+    supabase.from('influencers').select('*').eq('id', pip.influencer_id).single(),
+    supabase.from('api_keys').select('*').eq('user_id', pip.user_id).single(),
+  ])
   if (!infRow) throw new Error(`Influencer ${pip.influencer_id} not found — ${infErr?.message || 'not found'}`)
-  log(`Influencer: "${infRow.name}"`)
-  await flushLogs()
-
-  // Load API keys
-  const { data: keys, error: keysErr } = await supabase
-    .from('api_keys').select('*').eq('user_id', pip.user_id).single()
   if (!keys?.gemini_key) throw new Error(`No Gemini key configured — ${keysErr?.message || 'row missing or key empty'}`)
-  log(`API keys — Gemini: yes, IG token: ${keys.ig_access_token ? 'yes' : 'no'}, IG user ID: ${keys.ig_user_id ? 'yes' : 'no'}`)
+  log(`Influencer: "${infRow.name}" — Gemini: yes, IG token: ${keys.ig_access_token ? 'yes' : 'no'}, IG user ID: ${keys.ig_user_id ? 'yes' : 'no'}`)
   await flushLogs()
 
   const geminiKey  = keys.gemini_key
