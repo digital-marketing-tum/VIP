@@ -128,6 +128,44 @@ CREATE TABLE IF NOT EXISTS public.workflows (
   updated_at      timestamptz DEFAULT now()
 );
 
+-- ─── STORAGE BUCKETS ─────────────────────────────────────────────────────────
+-- Run in SQL Editor or via Dashboard → Storage → New bucket (toggle Public on)
+
+INSERT INTO storage.buckets (id, name, public)
+VALUES
+  ('carousel-images', 'carousel-images', true),
+  ('influencer-refs', 'influencer-refs', true)
+ON CONFLICT (id) DO NOTHING;
+
+-- Anyone can read public files; only authenticated users can upload/delete their own
+CREATE POLICY "public read carousel-images"
+  ON storage.objects FOR SELECT
+  USING (bucket_id = 'carousel-images');
+
+CREATE POLICY "auth upload carousel-images"
+  ON storage.objects FOR INSERT
+  TO authenticated
+  WITH CHECK (bucket_id = 'carousel-images');
+
+CREATE POLICY "auth delete carousel-images"
+  ON storage.objects FOR DELETE
+  TO authenticated
+  USING (bucket_id = 'carousel-images');
+
+CREATE POLICY "public read influencer-refs"
+  ON storage.objects FOR SELECT
+  USING (bucket_id = 'influencer-refs');
+
+CREATE POLICY "auth upload influencer-refs"
+  ON storage.objects FOR INSERT
+  TO authenticated
+  WITH CHECK (bucket_id = 'influencer-refs');
+
+CREATE POLICY "auth delete influencer-refs"
+  ON storage.objects FOR DELETE
+  TO authenticated
+  USING (bucket_id = 'influencer-refs');
+
 -- ─── ROW LEVEL SECURITY ───────────────────────────────────────────────────────
 
 ALTER TABLE public.influencers        ENABLE ROW LEVEL SECURITY;
