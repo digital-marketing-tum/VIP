@@ -265,70 +265,120 @@ const DAYS = [
 ]
 
 // ── SlotCard ──────────────────────────────────────────────────────────────────
-const STATUS_DOT = {
-  pending: null,
+const STATUS_META = {
+  pending: { color: null,      label: 'Pending' },
   running: { color: '#f59e0b', label: 'Running…' },
   done:    { color: '#22c55e', label: 'Done' },
-  error:   { color: '#ef4444', label: null }, // label comes from errorMessage
+  error:   { color: '#ef4444', label: 'Error' },
+}
+
+function SlotLogsModal({ slot, onClose }) {
+  const meta  = STATUS_META[slot.status] || STATUS_META.pending
+  const lines = slot.logs || []
+  return (
+    <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal" style={{ width: 520 }}>
+        <div style={{ padding: '16px 20px 12px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 600 }}>{slot.pipName}</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
+              {meta.color && <span style={{ width: 7, height: 7, borderRadius: '50%', background: meta.color, display: 'inline-block' }} />}
+              <span style={{ fontSize: 11, color: meta.color || 'var(--text-muted)', fontWeight: 600 }}>{meta.label}</span>
+              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>· {slot.scheduledAt}</span>
+            </div>
+          </div>
+          <button className="close-btn" onClick={onClose}>✕</button>
+        </div>
+        {slot.status === 'error' && slot.errorMessage && (
+          <div style={{ margin: '12px 20px 0', padding: '10px 12px', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 8, fontSize: 12, color: '#ef4444', fontFamily: 'monospace' }}>
+            {slot.errorMessage}
+          </div>
+        )}
+        <div style={{ padding: '12px 20px 16px' }}>
+          {lines.length === 0
+            ? <div style={{ fontSize: 12, color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                {slot.status === 'pending' ? 'Not started yet.' : 'No logs available yet.'}
+              </div>
+            : <div style={{ fontFamily: 'monospace', fontSize: 11, lineHeight: 1.7, background: 'var(--surface2)', borderRadius: 8, padding: '10px 12px', maxHeight: 340, overflowY: 'auto' }}>
+                {lines.map((line, i) => (
+                  <div key={i} style={{ color: line.includes('failed') || line.includes('Failed') || line.includes('error') ? '#ef4444' : line.includes('done') || line.includes('complete') || line.includes('successful') ? '#22c55e' : 'var(--text)' }}>
+                    {line}
+                  </div>
+                ))}
+              </div>
+          }
+        </div>
+      </div>
+    </div>
+  )
 }
 
 function SlotCard({ slot, onRemove, onNavigate }) {
-  const [hovered, setHovered] = useState(false)
+  const [hovered,  setHovered]  = useState(false)
+  const [showLogs, setShowLogs] = useState(false)
 
   const isCarousel = slot.pipFormat === 'carousel'
   const isWorkflow = slot.pipFormat === 'workflow'
   const iconColor  = isCarousel ? 'var(--purple)' : isWorkflow ? 'var(--text-mid)' : 'var(--blue)'
   const bg         = isCarousel ? 'var(--purple-bg)' : isWorkflow ? 'var(--surface2)' : 'var(--blue-bg)'
   const border     = isCarousel ? 'rgba(124,58,237,0.18)' : isWorkflow ? 'var(--border)' : 'rgba(0,113,227,0.18)'
+  const meta       = STATUS_META[slot.status] || STATUS_META.pending
   const canNav     = !!onNavigate && slot.status === 'pending'
-  const dotInfo    = STATUS_DOT[slot.status] || null
-  const tooltip    = slot.status === 'error' ? (slot.errorMessage || 'Pipeline error') : dotInfo?.label
+  const hasLogs    = slot.status !== 'pending'
+
+  function handleClick(e) {
+    e.stopPropagation()
+    if (hasLogs) setShowLogs(true)
+    else if (canNav) onNavigate?.()
+  }
 
   return (
-    <div
-      onClick={e => { e.stopPropagation(); if (canNav) onNavigate?.() }}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      style={{ position: 'relative', background: bg, border: `1px solid ${hovered && canNav ? iconColor : border}`, borderRadius: 9, padding: '8px 10px', transition: 'box-shadow 0.12s, border-color 0.12s', boxShadow: hovered ? '0 2px 8px rgba(0,0,0,0.08)' : 'none', cursor: canNav ? 'pointer' : 'default', opacity: slot.status === 'done' ? 0.6 : 1 }}
-      title={tooltip || undefined}
-    >
-      <button
-        onClick={e => { e.stopPropagation(); onRemove() }}
-        style={{
-          position: 'absolute', top: 5, right: 5,
-          width: 16, height: 16, borderRadius: '50%',
-          background: 'rgba(0,0,0,0.18)', border: 'none',
-          cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-          opacity: hovered ? 1 : 0, transform: hovered ? 'scale(1)' : 'scale(0.6)',
-          transition: 'opacity 0.12s, transform 0.12s', color: 'white',
-        }}
+    <>
+      <div
+        onClick={handleClick}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        style={{ position: 'relative', background: bg, border: `1px solid ${hovered ? iconColor : border}`, borderRadius: 9, padding: '8px 10px', transition: 'box-shadow 0.12s, border-color 0.12s', boxShadow: hovered ? '0 2px 8px rgba(0,0,0,0.08)' : 'none', cursor: 'pointer', opacity: slot.status === 'done' ? 0.65 : 1 }}
       >
-        <svg width="7" height="7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5">
-          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-        </svg>
-      </button>
+        <button
+          onClick={e => { e.stopPropagation(); onRemove() }}
+          style={{
+            position: 'absolute', top: 5, right: 5,
+            width: 16, height: 16, borderRadius: '50%',
+            background: 'rgba(0,0,0,0.18)', border: 'none',
+            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            opacity: hovered ? 1 : 0, transform: hovered ? 'scale(1)' : 'scale(0.6)',
+            transition: 'opacity 0.12s, transform 0.12s', color: 'white',
+          }}
+        >
+          <svg width="7" height="7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
 
-      <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: hovered ? 14 : 0, marginBottom: 5 }}>
-        {slot.pipName}
-      </div>
-
-      <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-        <div style={{ width: 14, height: 14, borderRadius: 4, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.06)' }}>
-          {isCarousel
-            ? <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke={iconColor} strokeWidth="2.5"><rect x="2" y="3" width="6" height="18" rx="1"/><rect x="9" y="3" width="6" height="18" rx="1"/><rect x="16" y="3" width="6" height="18" rx="1"/></svg>
-            : isWorkflow
-            ? <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke={iconColor} strokeWidth="2.5"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
-            : <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke={iconColor} strokeWidth="2.5"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
-          }
+        <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: hovered ? 14 : 0, marginBottom: 5 }}>
+          {slot.pipName}
         </div>
-        <span style={{ fontSize: 10, fontWeight: 700, color: iconColor, letterSpacing: '0.02em' }}>
-          {slot.scheduledAt?.slice(11, 16)}
-        </span>
-        {dotInfo && (
-          <span style={{ width: 6, height: 6, borderRadius: '50%', background: dotInfo.color, flexShrink: 0, marginLeft: 'auto' }} />
-        )}
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+          <div style={{ width: 14, height: 14, borderRadius: 4, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.06)' }}>
+            {isCarousel
+              ? <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke={iconColor} strokeWidth="2.5"><rect x="2" y="3" width="6" height="18" rx="1"/><rect x="9" y="3" width="6" height="18" rx="1"/><rect x="16" y="3" width="6" height="18" rx="1"/></svg>
+              : isWorkflow
+              ? <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke={iconColor} strokeWidth="2.5"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+              : <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke={iconColor} strokeWidth="2.5"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+            }
+          </div>
+          <span style={{ fontSize: 10, fontWeight: 700, color: iconColor, letterSpacing: '0.02em' }}>
+            {slot.scheduledAt?.slice(11, 16)}
+          </span>
+          {meta.color && (
+            <span style={{ width: 6, height: 6, borderRadius: '50%', background: meta.color, flexShrink: 0, marginLeft: 'auto' }} />
+          )}
+        </div>
       </div>
-    </div>
+      {showLogs && <SlotLogsModal slot={slot} onClose={() => setShowLogs(false)} />}
+    </>
   )
 }
 
@@ -856,7 +906,7 @@ export default function InfluencerDetail({ id, onBack, onOpenPipeline, onOpenCar
       .eq('influencer_id', id)
       .then(({ data }) => {
         if (!data?.length) return
-        setSchedule(data.map(row => ({ id: row.id, pipName: row.pip_name, pipFormat: row.pip_format, pipId: row.pip_id, scheduledAt: row.scheduled_at, status: row.status || 'pending', errorMessage: row.error_message || null })))
+        setSchedule(data.map(row => ({ id: row.id, pipName: row.pip_name, pipFormat: row.pip_format, pipId: row.pip_id, scheduledAt: row.scheduled_at, status: row.status || 'pending', errorMessage: row.error_message || null, logs: row.logs || [] })))
       })
     supabase.from('workflows').select('id, name, nodes, updated_at')
       .eq('influencer_id', id).order('created_at').then(({ data }) => setWorkflows(data || []))

@@ -10,7 +10,7 @@ import {
 
 export const config = { maxDuration: 300 }
 
-// ── Gemini API helpers (no rate limiting needed server-side) ──────────────────
+// ── Gemini API helpers ────────────────────────────────────────────────────────
 
 function geminiUrl(model, apiKey) {
   return `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
@@ -48,10 +48,10 @@ async function geminiImage(apiKey, prompt, inlineRefs, aspectRatio, model = DEFA
   if (!res.ok) throw new Error(data.error?.message || 'Gemini image error')
   const imgPart = data.candidates[0].content.parts.find(p => p.inlineData)
   if (!imgPart) throw new Error('No image returned from Gemini.')
-  return imgPart.inlineData // { mimeType, data: b64 }
+  return imgPart.inlineData
 }
 
-// ── Ref image resolver: handles both data: URLs and https:// URLs ─────────────
+// ── Ref image resolver ────────────────────────────────────────────────────────
 
 async function resolveRefImages(refImages) {
   const result = []
@@ -59,10 +59,7 @@ async function resolveRefImages(refImages) {
     if (img.startsWith('data:')) {
       const comma = img.indexOf(',')
       if (comma === -1) continue
-      result.push({
-        mimeType: img.slice(5, img.indexOf(';')),
-        data:     img.slice(comma + 1),
-      })
+      result.push({ mimeType: img.slice(5, img.indexOf(';')), data: img.slice(comma + 1) })
     } else if (img.startsWith('http')) {
       try {
         const res = await fetch(img)
@@ -75,7 +72,7 @@ async function resolveRefImages(refImages) {
   return result
 }
 
-// ── Supabase storage upload (Node-side, uses Buffer not atob) ─────────────────
+// ── Supabase storage upload ───────────────────────────────────────────────────
 
 async function uploadToStorage(supabase, dataUrl, bucket, path) {
   const [header, b64] = dataUrl.split(',')
@@ -109,38 +106,50 @@ function genId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
 }
 
-function log(slotId, msg) {
-  console.log(`[run-schedule] [slot:${slotId}] ${msg}`)
+function ts() {
+  return new Date().toISOString().slice(11, 19) // HH:MM:SS
 }
 
 // ── Full carousel pipeline ────────────────────────────────────────────────────
 
 async function runCarouselPipeline(supabase, slot) {
-  log(slot.id, `Starting carousel pipeline for pip_id=${slot.pip_id}`)
+  const logs = []
+  const log  = msg => { const line = `[${ts()}] ${msg}`; logs.push(line); console.log(`[slot:${slot.id}] ${msg}`) }
 
-  // Load pipeline, influencer, api keys
+  // Flush logs to DB so they're visible even if the function crashes mid-run
+  async function flushLogs() {
+    await supabase.from('schedule_slots').update({ logs }).eq('id', slot.id)
+  }
+
+  log(`Starting carousel pipeline — pip_id=${slot.pip_id}`)
+
+  // Load pipeline
   const { data: pip, error: pipErr } = await supabase
     .from('carousel_pipelines').select('*').eq('id', slot.pip_id).single()
   if (pipErr || !pip) throw new Error(`Pipeline ${slot.pip_id} not found`)
-  log(slot.id, `Pipeline loaded: "${pip.name}" (${pip.slide_count} slides, ${pip.aspect_ratio})`)
+  log(`Pipeline: "${pip.name}" (${pip.slide_count} slides, ${pip.aspect_ratio}, model=${pip.image_model})`)
 
+  // Load influencer
   const { data: infRow } = await supabase
     .from('influencers').select('*').eq('id', pip.influencer_id).single()
   if (!infRow) throw new Error(`Influencer ${pip.influencer_id} not found`)
-  log(slot.id, `Influencer loaded: "${infRow.name}"`)
+  log(`Influencer: "${infRow.name}"`)
 
+  // Load API keys
   const { data: keys } = await supabase
     .from('api_keys').select('*').eq('user_id', pip.user_id).single()
   if (!keys?.gemini_key) throw new Error('No Gemini key configured for this user')
-  log(slot.id, `API keys loaded — Gemini: yes, IG token: ${keys.ig_access_token ? 'yes' : 'no'}, IG user: ${keys.ig_user_id ? 'yes' : 'no'}`)
+  log(`API keys — Gemini: yes, IG token: ${keys.ig_access_token ? 'yes' : 'no'}, IG user ID: ${keys.ig_user_id ? 'yes' : 'no'}`)
+  await flushLogs()
 
   const geminiKey  = keys.gemini_key
   const inf        = mapInfluencer(infRow)
   const inlineRefs = await resolveRefImages(inf.refImages)
-  log(slot.id, `Ref images resolved: ${inlineRefs.length} of ${inf.refImages.length}`)
+  log(`Ref images: ${inlineRefs.length} of ${inf.refImages.length} resolved`)
 
-  // Phase 1: ideate
-  log(slot.id, 'Phase 1: Ideation…')
+  // Phase 1: ideation
+  log('Phase 1: Ideation…')
+  await flushLogs()
   const ideaDefaults = buildIdeationPrompt(inf)
   const ideaRaw = await geminiText(geminiKey, {
     system:      pip.p1_prompt?.system ?? ideaDefaults.system,
@@ -148,44 +157,51 @@ async function runCarouselPipeline(supabase, slot) {
     temperature: 1.5,
   })
   const idea = extractJSON(ideaRaw)
-  log(slot.id, `Phase 1 done — topic: "${idea?.topic}"`)
+  log(`Phase 1 done — topic: "${idea?.topic}"`)
 
   // Phase 2: slide prompts
-  log(slot.id, 'Phase 2: Slide prompts…')
+  log('Phase 2: Slide prompts…')
+  await flushLogs()
   const slideDefaults = buildSlidePromptsPrompt(inf, idea, pip.slide_count, pip.aspect_ratio)
   const slideRaw = await geminiText(geminiKey, {
     system: pip.p2_prompt?.system ?? slideDefaults.system,
     user:   pip.p2_prompt?.user   ?? slideDefaults.user,
   })
   const { slides } = extractJSON(slideRaw)
-  log(slot.id, `Phase 2 done — ${slides?.length} slide prompts`)
+  log(`Phase 2 done — ${slides?.length} slide prompts generated`)
+  await flushLogs()
 
   // Phase 3: generate + upload images
-  log(slot.id, 'Phase 3: Image generation…')
+  log('Phase 3: Image generation…')
   const execKey       = genId()
   const storageFolder = `${pip.user_id}/${pip.id}/${execKey}`
   const images        = []
 
   for (const slide of slides) {
-    log(slot.id, `  Generating image for slide ${slide.position}/${slides.length}…`)
+    log(`  Slide ${slide.position}/${slides.length}: generating image…`)
+    await flushLogs()
     const inlineData = await geminiImage(geminiKey, slide.prompt, inlineRefs, pip.aspect_ratio, pip.image_model)
     const dataUrl = `data:${inlineData.mimeType};base64,${inlineData.data}`
     const src = await uploadToStorage(supabase, dataUrl, 'carousel-images', `${storageFolder}/slide-${slide.position}`)
     images.push({ position: slide.position, src })
-    log(slot.id, `  Slide ${slide.position} uploaded: ${src}`)
+    log(`  Slide ${slide.position} done — uploaded to storage`)
+    await flushLogs()
   }
 
   // Phase 4: caption
-  log(slot.id, 'Phase 4: Caption…')
+  log('Phase 4: Caption…')
+  await flushLogs()
   const capDefaults = buildCaptionPrompt(inf, idea, pip.hashtag_count ?? 20)
   const capRaw = await geminiText(geminiKey, {
     system: pip.p4_prompt?.system ?? capDefaults.system,
     user:   pip.p4_prompt?.user   ?? capDefaults.user,
   })
   const capData = extractJSON(capRaw)
-  log(slot.id, `Phase 4 done — caption length: ${capData?.caption?.length ?? 0}, hashtags: ${capData?.hashtags?.length ?? 0}`)
+  log(`Phase 4 done — caption: ${capData?.caption?.length ?? 0} chars, hashtags: ${capData?.hashtags?.length ?? 0}`)
 
   // Save execution
+  log('Saving execution to database…')
+  await flushLogs()
   const { count } = await supabase
     .from('carousel_executions')
     .select('*', { count: 'exact', head: true })
@@ -205,28 +221,30 @@ async function runCarouselPipeline(supabase, slot) {
     posted:        false,
   })
   if (insertErr) throw new Error(`Failed to save execution: ${insertErr.message}`)
-  log(slot.id, `Execution saved: id=${execId}`)
+  log(`Execution saved — id=${execId}`)
 
-  // Attempt Instagram post — failure is non-fatal
+  // Instagram post
   const igToken  = keys.ig_access_token
   const igUserId = keys.ig_user_id
 
   if (igToken && igUserId && images.length >= 2) {
-    log(slot.id, 'Posting to Instagram…')
+    log('Posting to Instagram…')
+    await flushLogs()
     try {
       const imageUrls   = images.map(img => img.src)
       const captionText = [capData?.caption, ...(capData?.hashtags || [])].filter(Boolean).join('\n\n')
       await publishCarousel({ igUserId, accessToken: igToken, imageUrls, caption: captionText })
       await supabase.from('carousel_executions').update({ posted: true }).eq('id', execId)
-      log(slot.id, 'Instagram post successful')
+      log('Instagram post successful')
     } catch (err) {
-      console.error(`[run-schedule] [slot:${slot.id}] Instagram post failed:`, err.message)
+      log(`Instagram post failed: ${err.message}`)
     }
   } else {
-    log(slot.id, `Skipping Instagram post — igToken: ${!!igToken}, igUserId: ${!!igUserId}, images: ${images.length}`)
+    log(`Instagram post skipped — token: ${!!igToken}, userId: ${!!igUserId}, images: ${images.length}`)
   }
 
-  log(slot.id, `Pipeline complete — execId=${execId}`)
+  log('Pipeline complete')
+  await flushLogs()
   return execId
 }
 
@@ -235,10 +253,9 @@ async function runCarouselPipeline(supabase, slot) {
 export default async function handler(req, res) {
   console.log('[run-schedule] Cron triggered')
 
-  // Verify Vercel Cron secret (auto-set by Vercel on deploy)
   const cronSecret = process.env.CRON_SECRET
   if (cronSecret && req.headers.authorization !== `Bearer ${cronSecret}`) {
-    console.warn('[run-schedule] Unauthorized request — wrong or missing CRON_SECRET')
+    console.warn('[run-schedule] Unauthorized — wrong or missing CRON_SECRET')
     return res.status(401).json({ error: 'Unauthorized' })
   }
 
@@ -247,33 +264,23 @@ export default async function handler(req, res) {
     process.env.SUPABASE_SERVICE_ROLE_KEY,
   )
 
-  // Current Berlin datetime as "YYYY-MM-DDTHH:MM" for text comparison
   const now   = new Date()
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Europe/Berlin',
-    year:     'numeric',
-    month:    '2-digit',
-    day:      '2-digit',
-    hour:     '2-digit',
-    minute:   '2-digit',
-    hour12:   false,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hour12: false,
   }).formatToParts(now)
 
   const berlinDatetime = [
-    parts.find(p => p.type === 'year').value,
-    '-',
-    parts.find(p => p.type === 'month').value,
-    '-',
-    parts.find(p => p.type === 'day').value,
-    'T',
-    parts.find(p => p.type === 'hour').value.padStart(2, '0'),
-    ':',
+    parts.find(p => p.type === 'year').value, '-',
+    parts.find(p => p.type === 'month').value, '-',
+    parts.find(p => p.type === 'day').value, 'T',
+    parts.find(p => p.type === 'hour').value.padStart(2, '0'), ':',
     parts.find(p => p.type === 'minute').value.padStart(2, '0'),
   ].join('')
 
   console.log(`[run-schedule] Berlin time: ${berlinDatetime}`)
 
-  // Find all pending slots due now or overdue
   const { data: slots, error: slotErr } = await supabase
     .from('schedule_slots')
     .select('*')
@@ -290,26 +297,21 @@ export default async function handler(req, res) {
     return res.status(200).json({ skipped: true, berlin: berlinDatetime })
   }
 
-  console.log(`[run-schedule] Found ${slots.length} pending slot(s) due`)
-
-  // Respond immediately so cron-job.org gets its response within the 30s timeout.
-  // Vercel keeps the function running up to maxDuration (300s) after the response.
+  console.log(`[run-schedule] Found ${slots.length} pending slot(s)`)
   res.status(202).json({ started: true, slots: slots.length, berlin: berlinDatetime })
 
-  // Run each due slot in the background — mark status so it fires only once
   for (const slot of slots) {
-    log(slot.id, `Processing slot — format=${slot.pip_format}, pip_id=${slot.pip_id}, scheduled_at=${slot.scheduled_at}`)
+    console.log(`[run-schedule] Processing slot ${slot.id} (${slot.pip_format})`)
     try {
-      await supabase.from('schedule_slots').update({ status: 'running' }).eq('id', slot.id)
+      await supabase.from('schedule_slots').update({ status: 'running', logs: [] }).eq('id', slot.id)
       if (slot.pip_format === 'carousel' && slot.pip_id) {
         await runCarouselPipeline(supabase, slot)
       } else {
-        log(slot.id, `Skipping — unsupported format "${slot.pip_format}" or missing pip_id`)
+        console.log(`[run-schedule] Skipping slot ${slot.id} — unsupported format or missing pip_id`)
       }
       await supabase.from('schedule_slots').update({ status: 'done' }).eq('id', slot.id)
-      log(slot.id, 'Slot marked done')
     } catch (err) {
-      console.error(`[run-schedule] [slot:${slot.id}] Failed:`, err.message)
+      console.error(`[run-schedule] Slot ${slot.id} failed:`, err.message)
       await supabase.from('schedule_slots').update({
         status: 'error',
         error_message: err.message?.slice(0, 500) || 'Unknown error',
