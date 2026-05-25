@@ -114,7 +114,7 @@ function ts() {
 
 async function runCarouselPipeline(supabase, slot) {
   const logs = []
-  const log  = msg => { const line = `[${ts()}] ${msg}`; logs.push(line); console.log(`[slot:${slot.id}] ${msg}`) }
+  const log  = msg => { logs.push(`[${ts()}] ${msg}`) }
 
   // Flush logs to DB so they're visible even if the function crashes mid-run
   async function flushLogs() {
