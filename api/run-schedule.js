@@ -279,6 +279,7 @@ export default async function handler(req, res) {
     .select('*')
     .lte('scheduled_at', berlinDatetime)
     .eq('status', 'pending')
+    .limit(1)
 
   if (slotErr) {
     console.error('[run-schedule] Supabase query error:', slotErr.message)
