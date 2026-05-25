@@ -246,21 +246,19 @@ export default async function handler(req, res) {
     return res.status(200).json({ skipped: true, time: currentTime, day: dayKey })
   }
 
-  // Run each due slot — errors are isolated so one failure doesn't block others
-  const results = []
+  // Respond immediately so cron-job.org gets its response within the 30s timeout.
+  // Vercel keeps the function running up to maxDuration (300s) after the response.
+  res.status(202).json({ started: true, slots: slots.length, time: currentTime, day: dayKey })
+
+  // Run each due slot in the background — errors are isolated so one failure doesn't block others
   for (const slot of slots) {
     try {
       if (slot.pip_format === 'carousel' && slot.pip_id) {
-        const execId = await runCarouselPipeline(supabase, slot)
-        results.push({ slotId: slot.id, status: 'ok', execId })
-      } else {
-        results.push({ slotId: slot.id, status: 'skipped', reason: 'unsupported format or no pip_id' })
+        await runCarouselPipeline(supabase, slot)
       }
     } catch (err) {
       console.error(`Schedule slot ${slot.id} failed:`, err)
-      results.push({ slotId: slot.id, status: 'error', error: err.message })
     }
   }
 
-  return res.status(200).json({ results, time: currentTime, day: dayKey })
 }
