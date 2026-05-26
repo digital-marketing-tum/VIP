@@ -3,6 +3,7 @@ import { Store } from '../store'
 import { supabase } from '../supabase'
 import { getToken, listFolders, savePostToDrive } from '../services/drive'
 import { publishCarousel } from '../services/instagramGraph'
+import { normalizeHashtags } from '../../lib/utils.js'
 
 const PLATFORM_LABELS = { ig: 'Instagram', tt: 'TikTok', yt: 'YouTube' }
 
@@ -1823,7 +1824,7 @@ export default function InfluencerDetail({ id, onBack, onOpenPipeline, onOpenCar
                       </button>
                     </div>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                      {selectedPost.hashtags.map((tag, i) => (
+                      {normalizeHashtags(selectedPost.hashtags).map((tag, i) => (
                         <span key={i} style={{ background: 'var(--accent-bg)', color: 'var(--accent)', padding: '3px 10px', borderRadius: 20, fontSize: 12, fontWeight: 500 }}>{tag}</span>
                       ))}
                     </div>

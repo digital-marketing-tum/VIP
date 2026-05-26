@@ -7,7 +7,7 @@ import {
   buildSlidePromptsPrompt,
   buildCaptionPrompt,
 } from '../lib/gemini.js'
-import { genId } from '../lib/utils.js'
+import { genId, normalizeHashtags } from '../lib/utils.js'
 
 export const config = { maxDuration: 300 }
 
@@ -210,7 +210,7 @@ async function runCarouselPipeline(supabase, slot) {
     topic:         idea.topic || '',
     images,
     caption:       capData?.caption  || null,
-    hashtags:      capData?.hashtags || null,
+    hashtags:      normalizeHashtags(capData?.hashtags),
     posted:        false,
   })
   if (insertErr) throw new Error(`Failed to save execution: ${insertErr.message}`)

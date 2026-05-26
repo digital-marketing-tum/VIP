@@ -3,6 +3,7 @@ import { Store } from '../store'
 import { supabase } from '../supabase'
 import { uploadImage } from '../storage'
 import { ideateCarousel, generateSlidePrompts, generateTopicList, generateSlideImage, generateCaption, buildIdeationPrompt, buildSlidePromptsPrompt, buildTopicListPrompt, buildCaptionPrompt, IMAGE_MODELS, DEFAULT_IMAGE_MODEL } from '../services/generator'
+import { normalizeHashtags } from '../../lib/utils.js'
 
 // ── Supabase mappers ──────────────────────────────────────────────────────────
 function fromDbPip(row) {
@@ -1001,7 +1002,7 @@ function EditorView({ pip, inf, geminiKey, onUpdate, onBack }) {
       topic:          currentIdea?.topic || '',
       images:         doneImages.map(img => ({ position: img.position, src: img.src })),
       caption:        capData?.caption  || null,
-      hashtags:       capData?.hashtags || null,
+      hashtags:       normalizeHashtags(capData?.hashtags),
     }).select('id').single()
     return inserted?.id
   }
@@ -1085,7 +1086,7 @@ function EditorView({ pip, inf, geminiKey, onUpdate, onBack }) {
         .single()
       if (latestExec) {
         await supabase.from('carousel_executions')
-          .update({ caption: result.caption, hashtags: result.hashtags })
+          .update({ caption: result.caption, hashtags: normalizeHashtags(result.hashtags) })
           .eq('id', latestExec.id)
       }
     } catch (err) { setP4Error(err.message); setP4Status('error') }
@@ -1568,7 +1569,7 @@ function EditorView({ pip, inf, geminiKey, onUpdate, onBack }) {
                       </button>
                     </div>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                      {(captionResult.hashtags || []).map((tag, i) => (
+                      {normalizeHashtags(captionResult.hashtags).map((tag, i) => (
                         <span key={i} style={{
                           background: 'var(--accent-bg)', color: 'var(--accent)',
                           padding: '3px 10px', borderRadius: 20, fontSize: 12, fontWeight: 500,
@@ -1722,7 +1723,7 @@ function ExecutionsView({ influencerId, onBack }) {
               </button>
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-              {selected.hashtags.map((tag, i) => (
+              {normalizeHashtags(selected.hashtags).map((tag, i) => (
                 <span key={i} style={{ background: 'var(--accent-bg)', color: 'var(--accent)', padding: '3px 10px', borderRadius: 20, fontSize: 12, fontWeight: 500 }}>{tag}</span>
               ))}
             </div>
