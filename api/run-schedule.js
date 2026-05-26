@@ -158,7 +158,7 @@ async function runCarouselPipeline(supabase, slot) {
   const slideDefaults = buildSlidePromptsPrompt(inf, idea, pip.slide_count, pip.aspect_ratio)
   const slideRaw = await geminiText(geminiKey, {
     system: pip.p2_prompt?.system ?? slideDefaults.system,
-    user:   pip.p2_prompt?.user   ?? slideDefaults.user,
+    user:   slideDefaults.user,
   })
   const { slides } = extractJSON(slideRaw)
   log(`Phase 2 done — ${slides?.length} slide prompts generated`)
