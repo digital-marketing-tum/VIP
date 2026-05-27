@@ -169,11 +169,12 @@ async function runCarouselPipeline(supabase, slot) {
   const execKey       = genId()
   const storageFolder = `${pip.user_id}/${pip.id}/${execKey}`
   const images        = []
+  const QUALITY_SUFFIX = ' | Quality requirements: anatomically correct human anatomy, natural body proportions, properly formed hands with exactly five fingers each, no floating or detached limbs, no body parts clipping through objects or surfaces, no distorted or melting faces, no extra or missing body parts, coherent and physically plausible scene.'
 
   for (const slide of slides) {
     log(`  Slide ${slide.position}/${slides.length}: generating image…`)
     await flushLogs()
-    const inlineData = await geminiImage(geminiKey, slide.prompt, inlineRefs, pip.aspect_ratio, pip.image_model)
+    const inlineData = await geminiImage(geminiKey, slide.prompt + QUALITY_SUFFIX, inlineRefs, pip.aspect_ratio, pip.image_model)
     const dataUrl = `data:${inlineData.mimeType};base64,${inlineData.data}`
     const src = await uploadToStorage(supabase, dataUrl, 'carousel-images', `${storageFolder}/slide-${slide.position}`)
     images.push({ position: slide.position, src })
