@@ -2,6 +2,7 @@ import { textLimiter, imageLimiter } from './rateLimiter.js'
 import {
   buildPersonaContext,
   extractJSON,
+  parseCaptionResponse,
   IMAGE_MODELS,
   DEFAULT_IMAGE_MODEL,
   buildIdeationPrompt,
@@ -122,7 +123,7 @@ export async function generateCaption(apiKey, inf, idea, hashtagCount = 5, custo
   const system   = customPrompt?.system ?? defaults.system
   const user     = customPrompt?.user   ?? defaults.user
   const raw = await geminiText(apiKey, { system, user })
-  return extractJSON(raw)
+  return parseCaptionResponse(raw)
 }
 
 export async function ideateCarousel(apiKey, inf, customPrompt) {

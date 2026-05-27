@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 import { publishCarousel } from '../lib/instagram.js'
 import {
   extractJSON,
+  parseCaptionResponse,
   DEFAULT_IMAGE_MODEL,
   buildIdeationPrompt,
   buildSlidePromptsPrompt,
@@ -190,7 +191,7 @@ async function runCarouselPipeline(supabase, slot) {
     system: pip.p4_prompt?.system ?? capDefaults.system,
     user:   pip.p4_prompt?.user   ?? capDefaults.user,
   })
-  const capData = extractJSON(capRaw)
+  const capData = parseCaptionResponse(capRaw)
   log(`Phase 4 done — caption: ${capData?.caption?.length ?? 0} chars, hashtags: ${capData?.hashtags?.length ?? 0}`)
 
   // Save execution
