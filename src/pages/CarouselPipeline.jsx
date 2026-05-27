@@ -3,7 +3,7 @@ import { Store } from '../store'
 import { supabase } from '../supabase'
 import { uploadImage } from '../storage'
 import { ideateCarousel, generateSlidePrompts, generateTopicList, generateSlideImage, generateCaption, buildIdeationPrompt, buildSlidePromptsPrompt, buildTopicListPrompt, buildCaptionPrompt, IMAGE_MODELS, DEFAULT_IMAGE_MODEL } from '../services/generator'
-import { normalizeHashtags } from '../../lib/utils.js'
+import { normalizeHashtags, stripHashtagsFromCaption } from '../../lib/utils.js'
 
 // ── Supabase mappers ──────────────────────────────────────────────────────────
 function fromDbPip(row) {
@@ -1001,7 +1001,7 @@ function EditorView({ pip, inf, geminiKey, onUpdate, onBack }) {
       title:          `Post #${(count || 0) + 1}`,
       topic:          currentIdea?.topic || '',
       images:         doneImages.map(img => ({ position: img.position, src: img.src })),
-      caption:        capData?.caption  || null,
+      caption:        stripHashtagsFromCaption(capData?.caption) || null,
       hashtags:       normalizeHashtags(capData?.hashtags),
     }).select('id').single()
     return inserted?.id
@@ -1086,7 +1086,7 @@ function EditorView({ pip, inf, geminiKey, onUpdate, onBack }) {
         .single()
       if (latestExec) {
         await supabase.from('carousel_executions')
-          .update({ caption: result.caption, hashtags: normalizeHashtags(result.hashtags) })
+          .update({ caption: stripHashtagsFromCaption(result.caption), hashtags: normalizeHashtags(result.hashtags) })
           .eq('id', latestExec.id)
       }
     } catch (err) { setP4Error(err.message); setP4Status('error') }
@@ -1548,7 +1548,7 @@ function EditorView({ pip, inf, geminiKey, onUpdate, onBack }) {
                     </div>
                     <textarea
                       className="form-textarea"
-                      value={captionResult.caption}
+                      value={stripHashtagsFromCaption(captionResult.caption)}
                       onChange={e => setCaptionResult(prev => ({ ...prev, caption: e.target.value }))}
                       style={{ minHeight: 110, fontSize: 13, lineHeight: 1.6 }}
                     />
@@ -1707,7 +1707,7 @@ function ExecutionsView({ influencerId, onBack }) {
               </button>
             </div>
             <div style={{ background: 'var(--surface2)', borderRadius: 10, padding: '12px 14px', fontSize: 13, color: 'var(--text)', whiteSpace: 'pre-wrap', lineHeight: 1.6, border: '1px solid var(--border)' }}>
-              {selected.caption}
+              {stripHashtagsFromCaption(selected.caption)}
             </div>
           </div>
         )}

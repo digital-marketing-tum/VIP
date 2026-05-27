@@ -7,7 +7,7 @@ import {
   buildSlidePromptsPrompt,
   buildCaptionPrompt,
 } from '../lib/gemini.js'
-import { genId, normalizeHashtags } from '../lib/utils.js'
+import { genId, normalizeHashtags, stripHashtagsFromCaption } from '../lib/utils.js'
 
 export const config = { maxDuration: 300 }
 
@@ -210,7 +210,7 @@ async function runCarouselPipeline(supabase, slot) {
     title:         `Scheduled #${(count || 0) + 1}`,
     topic:         idea.topic || '',
     images,
-    caption:       capData?.caption  || null,
+    caption:       stripHashtagsFromCaption(capData?.caption) || null,
     hashtags:      normalizeHashtags(capData?.hashtags),
     posted:        false,
   })
@@ -227,7 +227,7 @@ async function runCarouselPipeline(supabase, slot) {
     await flushLogs()
     try {
       const imageUrls   = images.map(img => img.src)
-      const captionText = [capData?.caption, ...(capData?.hashtags || [])].filter(Boolean).join('\n\n')
+      const captionText = [stripHashtagsFromCaption(capData?.caption), normalizeHashtags(capData?.hashtags).join(' ')].filter(Boolean).join('\n\n')
       await publishCarousel({ igUserId, accessToken: igToken, imageUrls, caption: captionText })
       await supabase.from('carousel_executions').update({ posted: true }).eq('id', execId)
       log('Instagram post successful')
