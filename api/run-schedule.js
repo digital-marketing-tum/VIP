@@ -170,7 +170,7 @@ async function runCarouselPipeline(supabase, slot) {
   const execKey       = genId()
   const storageFolder = `${pip.user_id}/${pip.id}/${execKey}`
   const images        = []
-  const QUALITY_SUFFIX = ' | Quality requirements: anatomically correct human anatomy, natural body proportions, properly formed hands with exactly five fingers each, no floating or detached limbs, no body parts clipping through objects or surfaces, no distorted or melting faces, no extra or missing body parts, coherent and physically plausible scene.'
+  const QUALITY_SUFFIX = ' | Quality requirements: anatomically correct human anatomy, natural body proportions, properly formed hands with exactly five fingers each, no floating or detached limbs, no body parts clipping through objects or surfaces, no distorted or melting faces, no blurry or obscured faces, all faces must be sharp and in focus, no extra or missing body parts, coherent and physically plausible scene.'
 
   for (const slide of slides) {
     log(`  Slide ${slide.position}/${slides.length}: generating image…`)
