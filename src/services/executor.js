@@ -82,7 +82,7 @@ async function executeNode(node, results, apiKeys) {
     return { output: node.data.config?.input || '', type: 'text' }
   }
   if (node.type === 'llm') {
-    const { model = 'gemini-2.0-flash', systemPrompt = '', prompt = '' } = node.data.config || {}
+    const { model = 'gemini-2.5-flash', systemPrompt = '', prompt = '' } = node.data.config || {}
     const resolvedPrompt = resolveTemplate(prompt, results)
     const resolvedSystem = resolveTemplate(systemPrompt, results)
     return await callGeminiText(apiKeys.geminiKey, model, resolvedSystem, resolvedPrompt)

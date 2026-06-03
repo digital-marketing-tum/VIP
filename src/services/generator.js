@@ -26,7 +26,7 @@ export {
 }
 
 // ── Rate-limited Gemini text call ─────────────────────────────────────────────
-export async function geminiText(apiKey, { system, user, model = 'gemini-2.0-flash', temperature }) {
+export async function geminiText(apiKey, { system, user, model = 'gemini-2.5-flash', temperature }) {
   if (!apiKey || apiKey.length < 10 || !apiKey.startsWith('AIza')) {
     throw new Error('Invalid Gemini API key. Go to Settings and enter your key from aistudio.google.com (starts with AIza…).')
   }

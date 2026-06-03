@@ -18,7 +18,7 @@ function geminiUrl(model, apiKey) {
   return `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
 }
 
-async function geminiText(apiKey, { system, user, model = 'gemini-2.0-flash', temperature }) {
+async function geminiText(apiKey, { system, user, model = 'gemini-2.5-flash', temperature }) {
   const body = { contents: [{ parts: [{ text: user }] }] }
   if (system?.trim()) body.systemInstruction = { parts: [{ text: system }] }
   if (temperature !== undefined) body.generationConfig = { temperature }
