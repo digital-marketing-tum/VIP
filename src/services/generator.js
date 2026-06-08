@@ -36,9 +36,9 @@ export async function geminiText(apiKey, { system, user, model = 'gemini-2.5-fla
   if (system?.trim()) {
     body.systemInstruction = { parts: [{ text: system }] }
   }
-  if (temperature !== undefined) {
-    body.generationConfig = { temperature }
-  }
+  const genConfig = { seed: Math.floor(Math.random() * 2147483647) }
+  if (temperature !== undefined) genConfig.temperature = temperature
+  body.generationConfig = genConfig
   const res  = await fetch(url, {
     method:  'POST',
     headers: { 'Content-Type': 'application/json' },
